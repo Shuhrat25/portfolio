@@ -142,11 +142,24 @@ export function stopSpeaking() {
 const ACTION = /<<\s*open\s*:\s*([a-z]+)(?:\s*:\s*([a-z0-9]+))?\s*>>/i;
 const KINDS: ProjectKind[] = ["3d", "fullstack", "mobile", "contribution"];
 
-function cleanForSpeech(text: string) {
+/**
+ * What the visitor reads: no action tags or markdown. Underscores are only dropped at word
+ * edges (markdown emphasis), so handles like @abdurahmonov_shuhrat survive intact.
+ */
+export function cleanForDisplay(text: string) {
   return text
     .replace(/<<[^>]*>>?/g, "")
     .replace(/<<[^>]*$/, "")
-    .replace(/[*_#`]/g, "")
+    .replace(/[*#`]/g, "")
+    .replace(/(^|\s)_+|_+(?=\s|[.,!?;:)]|$)/g, "$1")
+    .trim();
+}
+
+/** What Yui says: the same text without URLs, which TTS would spell out character by character. */
+export function cleanForSpeech(text: string) {
+  return cleanForDisplay(text)
+    .replace(/\bhttps?:\/\/\S+/gi, "")
+    .replace(/\s{2,}/g, " ")
     .trim();
 }
 
@@ -224,7 +237,7 @@ export async function ask(question: string) {
         const kind = match[2]?.toLowerCase() as ProjectKind | undefined;
         if (PANELS.includes(panel)) openPanel(panel, kind && KINDS.includes(kind) ? kind : "all");
       }
-      store.set({ subtitle: cleanForSpeech(raw), subtitleMode: "stream" });
+      store.set({ subtitle: cleanForDisplay(raw), subtitleMode: "stream" });
       // The free Gemini TTS tier allows only a few requests per minute, so an answer is voiced in
       // two clips: the first sentence (to start speaking early) and the rest once the stream ends.
       // A boundary is punctuation + space, so "Next.js" stays whole.
@@ -247,7 +260,7 @@ export async function ask(question: string) {
   if (!alive(id)) return;
   enqueue(raw.slice(consumed));
   streamDone = true;
-  const answer = cleanForSpeech(raw);
+  const answer = cleanForDisplay(raw);
   store.set((s) => ({ history: [...s.history, { role: "user" as const, text: q }, { role: "model" as const, text: answer }].slice(-12) }));
   if (!playing && spoken >= queue.length) store.set({ busy: "idle" });
 }

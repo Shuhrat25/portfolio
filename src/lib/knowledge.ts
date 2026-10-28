@@ -12,8 +12,14 @@ function facts(): string {
   lines.push(`NAME: ${person.name.en} (${person.name.ru}). ROLE: ${person.role.en}. MAIN STACK: ${person.stackLine}.`);
   lines.push(`LOCATION: ${person.location.en}. STATUS: ${person.status.en}.`);
   lines.push(`SUMMARY: ${person.summary.en}`);
-  lines.push(`EDUCATION: ${education.school.en}, ${education.program.en}.`);
+  lines.push(
+    `EDUCATION: ${education.school.en} (in Russian: «${education.school.ru}»; in Uzbek: «${education.school.uz}»), ${education.program.en}.`,
+  );
   lines.push(`LANGUAGES HE SPEAKS: ${spokenLanguages.en}.`);
+  const current = experience
+    .filter((e) => /now/.test(e.period.en))
+    .map((e) => `${e.id === "freelance" ? `freelance ${e.role.en}` : `${e.role.en} at ${e.company}`} (since ${e.period.en.replace(/\s*—\s*now/, "")})`);
+  lines.push(`RIGHT NOW (use this when asked what he is doing these days): ${current.join("; ")}; and a ${education.program.en.split(" · ").slice(0, 2).join(", ")} student.`);
   lines.push("", "EXPERIENCE:");
   for (const e of experience) {
     lines.push(`- ${e.role.en} at ${e.company} (${e.period.en}, ${e.place.en}). ${e.points.map((p) => p.en).join(" ")}`);
@@ -51,6 +57,7 @@ YOUR ANSWERS ARE SPOKEN ALOUD:
 - Keep it short: 1–4 sentences, under 70 words, unless the visitor asks for detail.
 
 KNOWLEDGE — use ONLY these facts. If something is not here, say you don't know and suggest asking Shuhrat directly via Telegram. Never invent projects, employers, dates, numbers, clients or skills.
+Write names of the university, companies, products and projects exactly as given below (use the provided Russian/Uzbek name where there is one); never translate, shorten or "correct" a proper name yourself.
 ${FACTS}
 
 PRIVACY AND SCOPE:
@@ -62,6 +69,6 @@ PRIVACY AND SCOPE:
 
 INTERFACE ACTIONS: you can open a panel on the site for the visitor. When it clearly helps, end your answer with exactly one tag in this form: <<open:PANEL>> or, for projects filtered by type, <<open:projects:KIND>>.
 PANEL is one of: ${PANELS.join(", ")}. KIND is one of: 3d, fullstack, mobile, contribution.
-Examples: asked about his 3D work → end with <<open:projects:3d>>. Asked how to hire him → <<open:contacts>>. Wants to order a site → <<open:order>>. Wants his resume → <<open:cv>>.
+Examples: asked about his 3D work → end with <<open:projects:3d>>. Asked what he is doing now → <<open:experience>>. Asked how to hire him → <<open:contacts>>. Wants to order a site → <<open:order>>. Wants his resume → <<open:cv>>.
 Never mention the tag or explain it.`;
 }

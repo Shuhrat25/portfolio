@@ -14,10 +14,35 @@ export const YUI_VOICE = process.env.GEMINI_TTS_VOICE || "Leda";
 
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
 
+// Gemini sometimes accepts a request and then stalls for minutes; give each model this long to
+// start answering before moving on to the next one.
+const TEXT_HEADERS_TIMEOUT_MS = 15_000;
+const TTS_TIMEOUT_MS = 30_000;
+
 function apiKey(): string {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY is not set");
   return key;
+}
+
+/**
+ * fetch() that gives up after `ms` without response headers. A timeout resolves to a synthetic
+ * 504 so callers fall through to the next model; an abort from the visitor still throws.
+ */
+async function fetchWithin(url: string, init: RequestInit, ms: number, signal?: AbortSignal): Promise<Response> {
+  const controller = new AbortController();
+  const onAbort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", onAbort, { once: true });
+  const timer = setTimeout(() => controller.abort(new DOMException("Gemini timeout", "TimeoutError")), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return new Response(null, { status: 504 });
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
+  }
 }
 
 export type ChatTurn = { role: "user" | "model"; text: string };
@@ -33,12 +58,12 @@ export async function streamChat(system: string, turns: ChatTurn[], signal?: Abo
 
   let lastStatus = 0;
   for (const { model, thinking } of TEXT_MODELS) {
-    const res = await fetch(`${BASE}/${model}:streamGenerateContent?alt=sse`, {
-      method: "POST",
-      headers: { "x-goog-api-key": apiKey(), "content-type": "application/json" },
-      body: body(thinking),
+    const res = await fetchWithin(
+      `${BASE}/${model}:streamGenerateContent?alt=sse`,
+      { method: "POST", headers: { "x-goog-api-key": apiKey(), "content-type": "application/json" }, body: body(thinking) },
+      TEXT_HEADERS_TIMEOUT_MS,
       signal,
-    });
+    );
     if (res.ok && res.body) return sseToText(res.body);
     lastStatus = res.status;
     await res.body?.cancel();
@@ -80,18 +105,22 @@ function sseToText(source: ReadableStream<Uint8Array>): ReadableStream<Uint8Arra
 export async function synthesize(text: string, signal?: AbortSignal): Promise<ArrayBuffer> {
   let lastStatus = 0;
   for (const model of TTS_MODELS) {
-    const res = await fetch(`${BASE}/${model}:generateContent`, {
-      method: "POST",
-      headers: { "x-goog-api-key": apiKey(), "content-type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text }] }],
-        generationConfig: {
-          responseModalities: ["AUDIO"],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: YUI_VOICE } } },
-        },
-      }),
+    const res = await fetchWithin(
+      `${BASE}/${model}:generateContent`,
+      {
+        method: "POST",
+        headers: { "x-goog-api-key": apiKey(), "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text }] }],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: YUI_VOICE } } },
+          },
+        }),
+      },
+      TTS_TIMEOUT_MS,
       signal,
-    });
+    );
     if (res.ok) {
       const data = await res.json();
       const inline = data.candidates?.[0]?.content?.parts?.find((p: { inlineData?: unknown }) => p.inlineData)?.inlineData;
