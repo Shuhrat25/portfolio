@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect } from "react";
 import { loadVisitor, store, useStore } from "@/lib/store";
+import { Eggs } from "./Eggs";
 import { Frame, TopBar } from "./Hud";
 import { BootOverlay, LanguageStep, NameStep, ResumeStep } from "./Onboarding";
 import { PanelHost } from "./panels/PanelHost";
@@ -41,6 +42,7 @@ export default function Experience() {
           <PanelHost />
         </>
       )}
+      <Eggs />
     </main>
   );
 }

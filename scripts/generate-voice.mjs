@@ -37,7 +37,7 @@ for (const job of jobs) {
   mkdirSync(dir, { recursive: true });
   for (let attempt = 1; ; attempt++) {
     try {
-      const wav = Buffer.from(await synthesize(job.text));
+      const wav = Buffer.from(await synthesize(job.text, job.lang));
       const tmp = join(dir, `${job.file}.wav`);
       writeFileSync(tmp, wav);
       execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", tmp, "-ac", "1", "-b:a", "64k", mp3]);

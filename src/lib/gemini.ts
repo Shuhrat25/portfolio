@@ -98,11 +98,26 @@ function sseToText(source: ReadableStream<Uint8Array>): ReadableStream<Uint8Arra
   );
 }
 
+// English TTS says "Shurat" for the Uzbek spelling; the "kh" spelling gets the h-sound right.
+// Bump PRONUNCIATION when this map changes so cached clips are regenerated.
+export const PRONUNCIATION = "p2";
+const SAY: Partial<Record<string, [RegExp, string][]>> = {
+  en: [
+    [/Shuhrat/g, "Shukhrat"],
+    [/Abdurahmonov/g, "Abdurakhmonov"],
+  ],
+};
+
+export function forSpeech(text: string, lang: string): string {
+  return (SAY[lang] ?? []).reduce((t, [from, to]) => t.replace(from, to), text);
+}
+
 /**
  * Returns a WAV file (24 kHz mono) for the given text. Only the text itself is sent: the TTS
  * models read a style instruction aloud, so Yui's character comes from the voice alone.
  */
-export async function synthesize(text: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+export async function synthesize(text: string, lang: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  text = forSpeech(text, lang);
   let lastStatus = 0;
   for (const model of TTS_MODELS) {
     const res = await fetchWithin(

@@ -3,7 +3,8 @@ import { address, type Honorific } from "@/content/ui";
 import { GeminiError, streamChat, type ChatTurn } from "@/lib/gemini";
 import { systemPrompt } from "@/lib/knowledge";
 import { allow, clientKey } from "@/lib/rate-limit";
-import { cacheKey, getCached, normalizeQuestion, putCached } from "@/lib/speech-cache";
+import { after } from "next/server";
+import { cacheKey, getCached, logQuestion, normalizeQuestion, putCached } from "@/lib/speech-cache";
 
 const MAX_TURNS = 12;
 const MAX_CHARS = 600;
@@ -43,14 +44,19 @@ export async function POST(request: Request) {
   const firstQuestion = turns.length === 1;
   const system = systemPrompt(lang, firstQuestion ? "" : address(lang, name, honorific));
   const key = firstQuestion ? cacheKey(system, lang, normalizeQuestion(turns[0].text)) : null;
+  const question = turns.at(-1)!.text;
   if (key) {
     const cached = await getCached("chat", key);
-    if (cached) return text(new Response(new Uint8Array(cached)).body!, "hit");
+    if (cached) {
+      after(() => logQuestion(lang, question, true));
+      return text(new Response(new Uint8Array(cached)).body!, "hit");
+    }
   }
 
   if (!allow(clientKey(request, "chat"), 20, 10 * 60_000)) {
     return Response.json({ error: "rate_limited" }, { status: 429 });
   }
+  after(() => logQuestion(lang, question, false));
 
   try {
     const stream = await streamChat(system, turns, request.signal);

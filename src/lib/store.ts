@@ -25,6 +25,16 @@ export type State = {
   busy: "idle" | "thinking" | "speaking" | "narrating";
   muted: boolean;
   history: ChatMessage[];
+  /** Menu item under the pointer; the core leans towards it. */
+  hover: PanelId | "tell" | null;
+  /** Interface sound effects (separate from Yui's voice), off by default. */
+  fx: boolean;
+  /** Reduced scene for weak devices; "none" when WebGL is unavailable. */
+  quality: "full" | "lite" | "none";
+  /** Microphone is recording a question. */
+  listening: boolean;
+  /** Chat easter egg currently playing. */
+  egg: "matrix" | "glitch" | null;
 };
 
 const initial: State = {
@@ -44,6 +54,11 @@ const initial: State = {
   busy: "idle",
   muted: false,
   history: [],
+  hover: null,
+  fx: false,
+  quality: "full",
+  listening: false,
+  egg: null,
 };
 
 let state = initial;

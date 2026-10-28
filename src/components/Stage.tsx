@@ -5,6 +5,7 @@ import gsap from "gsap";
 import { useEffect, useRef, useState } from "react";
 import { PANELS, ui, type PanelId } from "@/content/ui";
 import { MOBILE, stageInsets } from "@/lib/layout";
+import { MENU_ANGLES } from "@/lib/menu-layout";
 import { useStore } from "@/lib/store";
 import { useViewport } from "@/lib/use-viewport";
 import { voice } from "@/lib/voice";
@@ -13,18 +14,7 @@ import { MenuButton } from "./MenuButton";
 
 gsap.registerPlugin(useGSAP);
 
-// Angle (degrees, 0 = right, counter-clockwise) for each menu node around the core.
-const ANGLES: Record<PanelId | "tell", number> = {
-  tell: 90,
-  about: 142,
-  experience: 168,
-  projects: 194,
-  skills: 220,
-  cardinal: 38,
-  cv: 12,
-  contacts: -14,
-  order: -40,
-};
+const ANGLES = MENU_ANGLES;
 
 function useInsets() {
   const { w, h } = useViewport();

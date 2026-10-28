@@ -1,5 +1,6 @@
 import { LANGS, type Lang } from "@/content/profile";
-import { GeminiError, synthesize, YUI_VOICE } from "@/lib/gemini";
+import { after } from "next/server";
+import { GeminiError, PRONUNCIATION, synthesize, YUI_VOICE } from "@/lib/gemini";
 import { allow, clientKey } from "@/lib/rate-limit";
 import { cacheKey, getCached, putCached } from "@/lib/speech-cache";
 
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
   if (!text) return Response.json({ error: "bad_request" }, { status: 400 });
 
   // Already said once: replay it without touching Gemini or the visitor's rate limit.
-  const key = cacheKey(YUI_VOICE, lang, text);
+  const key = cacheKey(YUI_VOICE, PRONUNCIATION, lang, text);
   const cached = await getCached("tts", key);
   if (cached) return wav(cached, "hit");
 
@@ -27,8 +28,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const audio = Buffer.from(await synthesize(text, request.signal));
-    await putCached("tts", key, audio);
+    const audio = Buffer.from(await synthesize(text, lang, request.signal));
+    after(() => putCached("tts", key, audio));
     return wav(audio, "miss");
   } catch (error) {
     const status = error instanceof GeminiError && error.status === 429 ? 429 : 502;
