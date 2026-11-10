@@ -15,7 +15,7 @@ for (const line of readFileSync(join(root, ".env.local"), "utf8").split(/\r?\n/)
 
 const { synthesize, GeminiError } = await import("../src/lib/gemini.ts");
 const { narration, sectionLines } = await import("../src/content/narration.ts");
-const { greeting } = await import("../src/content/ui.ts");
+const { greeting, ui } = await import("../src/content/ui.ts");
 const { cardinal, projects } = await import("../src/content/profile.ts");
 const { faq } = await import("../src/content/faq.ts");
 
@@ -26,6 +26,7 @@ const langs = only ? [only] : ["en", "ru", "uz"];
 const jobs = [];
 for (const lang of langs) {
   jobs.push({ lang, file: "greeting", text: greeting(lang, "", "name", false) });
+  jobs.push({ lang, file: "guest-ok", text: ui.nameCard.guestOk[lang] });
   for (const [panel, text] of Object.entries(sectionLines)) jobs.push({ lang, file: `section-${panel}`, text: text[lang] });
   narration.forEach((step, i) => jobs.push({ lang, file: `narration-${i}`, text: step.text[lang] }));
   // Suggested questions first (the most tapped), then the "Tell me more" stories, CARDINAL first.

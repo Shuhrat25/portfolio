@@ -4,6 +4,7 @@ import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { faq, type Faq } from "@/content/faq";
+import { focusWhenShown } from "@/lib/focus";
 import { PANELS, ui, type PanelId } from "@/content/ui";
 import { MOBILE, stageInsets } from "@/lib/layout";
 import { cancelListening, lendMic, startListening, stopListening, useCanListen } from "@/lib/listen";
@@ -14,6 +15,7 @@ import { useViewport } from "@/lib/use-viewport";
 import { voice } from "@/lib/voice";
 import { ask, askFaq, narrate, stopSpeaking, visitSection } from "@/lib/yui";
 import { MenuButton } from "./MenuButton";
+import { NameCard } from "./NameCard";
 
 gsap.registerPlugin(useGSAP);
 
@@ -297,18 +299,6 @@ function Subtitles({ maxWidth }: { maxWidth?: number }) {
 }
 
 /**
- * Focuses what `find` returns once it can take focus: a panel that has just opened is still hidden
- * by its intro animation for a frame or two, and focusing a hidden element does nothing.
- */
-function focusWhenShown(find: () => HTMLElement | null, frames = 30) {
-  requestAnimationFrame(() => {
-    const el = find();
-    el?.focus();
-    if (el && document.activeElement !== el && frames > 0) focusWhenShown(find, frames - 1);
-  });
-}
-
-/**
  * Suggested questions above the chat input, in a row that scrolls sideways. A tapped one leaves
  * the row; its answer is checked and recorded ahead. The row keeps its height when it is empty,
  * so the core never jumps.
@@ -346,7 +336,7 @@ function Suggestions() {
   };
 
   return (
-    <div ref={row} className="scroll-thin mx-auto flex h-8 w-full max-w-2xl shrink-0 gap-1.5 overflow-x-auto" role="group" aria-label={ui.suggestions[lang]}>
+    <div ref={row} data-suggestions className="scroll-thin mx-auto flex h-8 w-full max-w-2xl shrink-0 gap-1.5 overflow-x-auto" role="group" aria-label={ui.suggestions[lang]}>
       {next.map((f, i) => (
         <button
           key={f.id}
@@ -372,6 +362,7 @@ export function Dock() {
   const busy = useStore((s) => s.busy);
   const panel = useStore((s) => s.panel);
   const listening = useStore((s) => s.listening);
+  const nameAsk = useStore((s) => s.nameAsk);
   const micAvailable = useCanListen();
   const [value, setValue] = useState("");
   const root = useRef<HTMLDivElement>(null);
@@ -437,7 +428,8 @@ export function Dock() {
           ))}
         </div>
       )}
-      <Suggestions />
+      {/* The name card takes the suggestions' row while it is up, so nothing else moves. */}
+      {nameAsk ? <NameCard /> : <Suggestions />}
       <form
         className="holo mx-auto flex w-full max-w-2xl items-center gap-2 py-1.5 pl-4 pr-1.5"
         onSubmit={(e) => {

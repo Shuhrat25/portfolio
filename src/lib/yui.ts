@@ -3,9 +3,9 @@
 import { narration, sectionLines } from "@/content/narration";
 import type { Faq } from "@/content/faq";
 import { cardinal, type Lang, type Project, type ProjectKind } from "@/content/profile";
-import { greeting, PANELS, ui, type PanelId } from "@/content/ui";
+import { greeting, niceToMeet, PANELS, ui, type PanelId } from "@/content/ui";
 import { loadFx, sfx } from "./sfx";
-import { forgetVisitor, saveVisitor, store } from "./store";
+import { forgetVisitor, loadVisitor, saveVisitor, store, type State } from "./store";
 import { voice } from "./voice";
 
 // Every new action bumps the run id; older async loops notice and quit.
@@ -79,6 +79,8 @@ export function beginSession() {
 }
 
 const DEEP_BOOT_MIN_MS = 1200;
+/** How long a shared section is on screen before a new visitor is asked for a name. */
+const NAME_ASK_MS = 2500;
 // A touch counts as a gesture only on release, and a screen reader's activation arrives as a bare
 // click, so each of these may be the one that unlocks audio.
 const GESTURES = ["pointerdown", "pointerup", "touchend", "click", "keydown"] as const;
@@ -103,10 +105,10 @@ function armGestures() {
  * line as soon as the core is up. Nothing has been clicked yet, so the browser keeps audio locked:
  * the line is typed, and Yui's voice is unlocked by the visitor's first gesture.
  */
-export function beginDeepLink(panel: PanelId, kind?: ProjectKind) {
+export function beginDeepLink(panel: PanelId, kind: ProjectKind | undefined, askName: boolean) {
   armGestures();
   loadFx(); // the onboarding screens restore it on a normal visit; a link skips them
-  store.set({ phase: "boot", menuVisible: false, panel: null, subtitle: "", question: "" });
+  store.set({ phase: "boot", menuVisible: false, panel: null, subtitle: "", question: "", nameAsk: false, guest: false });
   const started = performance.now();
   const sceneUp = new Promise<void>((resolve) => {
     const check = () => (store.get().sceneReady && performance.now() - started > DEEP_BOOT_MIN_MS ? resolve() : setTimeout(check, 100));
@@ -116,19 +118,142 @@ export function beginDeepLink(panel: PanelId, kind?: ProjectKind) {
     store.set({ phase: "live", menuVisible: true });
     void visitSection(panel);
     if (kind) openPanel(panel, kind);
+    // A new visitor skipped the name step with the rest of onboarding: a small card asks once
+    // the section has had a moment on screen (in a tab they can see).
+    if (askName) afterVisible(NAME_ASK_MS, showNameCard);
   });
+}
+
+// --- The name card (NameCard.tsx) for a new visitor who came by a shared link -----------------
+
+/** Left alone this long (visible time, not focused, nothing typed), the card leaves on its own. */
+const NAME_IGNORED_MS = 25_000;
+let nameTimer: ReturnType<typeof setTimeout> | undefined;
+let nameFocused = false;
+let nameFocusCarried = false;
+let visibilityWatched = false;
+
+/** Runs `fn` once the tab has been visible for `ms`: a link opened in a background tab waits. */
+function afterVisible(ms: number, fn: () => void) {
+  const start = () => setTimeout(() => (document.visibilityState === "visible" ? fn() : afterVisible(ms, fn)), ms);
+  if (document.visibilityState === "visible") return void start();
+  const onShow = () => {
+    if (document.visibilityState !== "visible") return;
+    document.removeEventListener("visibilitychange", onShow);
+    start();
+  };
+  document.addEventListener("visibilitychange", onShow);
+}
+
+function showNameCard() {
+  const s = store.get();
+  if (s.phase !== "live" || s.name || s.guest || s.nameAsk) return;
+  // A focused suggestion chip is about to give way to the card: its field takes the focus.
+  nameFocusCarried = !!document.activeElement?.closest("[data-suggestions]");
+  nameFocused = false;
+  store.set({ nameAsk: true, nameDraft: "" });
+  if (!visibilityWatched) {
+    visibilityWatched = true;
+    document.addEventListener("visibilitychange", scheduleNameDismiss);
+  }
+  scheduleNameDismiss();
+}
+
+/** (Re)starts the ignore countdown, paused while the card is focused, typed in or out of sight. */
+function scheduleNameDismiss() {
+  clearTimeout(nameTimer);
+  const s = store.get();
+  if (!s.nameAsk || nameFocused || s.nameDraft.trim() || document.visibilityState !== "visible") return;
+  nameTimer = setTimeout(() => closeNameCard({}), NAME_IGNORED_MS);
+}
+
+function closeNameCard(patch: Partial<State>) {
+  clearTimeout(nameTimer);
+  nameFocused = false;
+  nameFocusCarried = false;
+  store.set({ ...patch, nameAsk: false, nameDraft: "" });
+}
+
+export function setNameDraft(value: string) {
+  store.set({ nameDraft: value });
+  scheduleNameDismiss();
+}
+
+export function nameCardFocus(on: boolean) {
+  nameFocused = on;
+  scheduleNameDismiss();
+}
+
+/** The card is moving (dock ↔ panel sheet) with the focus in it: the new one takes it back. */
+export function carryNameFocus() {
+  nameFocusCarried = true;
+}
+
+export function takeNameFocus() {
+  const carried = nameFocusCarried;
+  nameFocusCarried = false;
+  return carried;
+}
+
+/**
+ * Yui answers the card, but only over a section's short intro line or silence: a story, a
+ * narration or a chat answer the visitor started is not cut short (the name is kept anyway).
+ */
+function replyToCard(text: string, audio: () => Promise<AudioBuffer | null>) {
+  if (store.get().busy !== "idle" && run !== sectionRun) return;
+  const id = newRun();
+  store.set({ busy: "speaking", question: "" });
+  void say(id, text, audio()).then(() => {
+    if (alive(id)) store.set({ busy: "idle" });
+  });
+}
+
+/** The visitor introduced themselves on the card: Yui greets them by name and remembers them. */
+export function giveName(raw: string) {
+  const name = raw.trim().slice(0, 40);
+  if (!name) return;
+  closeNameCard({ name, honorific: "name", guest: false });
+  saveVisitor(); // the next visit opens with "Welcome back, <name>"
+  const lang = store.get().lang;
+  const text = niceToMeet(lang, name);
+  // It contains their name, so it is synthesised live and never shared through the server cache.
+  replyToCard(text, () => voice.tts(text, lang));
+}
+
+/** The visitor closed the card: "guest" for the rest of this visit, nothing saved. */
+export function declineName() {
+  closeNameCard({ guest: true });
+  const text = ui.nameCard.guestOk[store.get().lang];
+  replyToCard(text, () => scripted("guest-ok", text));
 }
 
 export function restartIntro() {
   newRun();
   forgetVisitor();
-  store.set({ phase: "language", returning: false, name: "", honorific: "name", panel: null, menuVisible: false, subtitle: "", question: "", busy: "idle", history: [], faqAsked: [] });
+  closeNameCard({});
+  store.set({
+    phase: "language",
+    returning: false,
+    name: "",
+    honorific: "name",
+    panel: null,
+    menuVisible: false,
+    subtitle: "",
+    question: "",
+    busy: "idle",
+    history: [],
+    faqAsked: [],
+    nameAsk: false,
+    guest: false,
+  });
 }
 
 export function switchLanguage(lang: Lang) {
   newRun();
   store.set({ lang, busy: "idle", subtitle: "", question: "" });
-  saveVisitor();
+  // Only a visitor who is already remembered: a shared-link visitor who has not introduced
+  // themselves must still get the full welcome on a normal visit.
+  if (loadVisitor()) saveVisitor();
 }
 
 /** Starts fetching the greeting while the boot animation plays. */
@@ -152,9 +277,13 @@ export function openPanel(panel: PanelId | null, filter?: ProjectKind | "all") {
   store.set((s) => ({ panel, projectFilter: filter ?? (panel === s.panel ? s.projectFilter : "all") }));
 }
 
+/** The run saying a section's short intro line: answering the name card may cut it short. */
+let sectionRun = -1;
+
 /** Menu click: open the section and say its line. */
 export async function visitSection(panel: PanelId) {
   const id = newRun();
+  sectionRun = id;
   openPanel(panel);
   const text = sectionLines[panel][store.get().lang];
   store.set({ busy: "speaking", question: "" });
@@ -299,7 +428,9 @@ export async function ask(question: string) {
   const id = newRun();
   const controller = new AbortController();
   chatAbort = controller;
-  const { lang, name, honorific, history } = store.get();
+  const { lang, honorific, history, guest } = store.get();
+  // A visitor who chose to stay a guest is addressed as one ("гость", "mehmon").
+  const name = store.get().name || (guest ? ui.guest[lang] : "");
   const messages = [...history, { role: "user" as const, text: q }].slice(-12);
   store.set({ busy: "thinking", question: q, subtitle: "", subtitleMode: "stream" });
   voice.pulse(1200);

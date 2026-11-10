@@ -21,6 +21,18 @@ export const ui = {
   close: { en: "Close", ru: "Закрыть", uz: "Yopish" } as L,
   copyLink: { en: "Copy a link to this section", ru: "Скопировать ссылку на раздел", uz: "Bo‘lim havolasini nusxalash" } as L,
   linkCopied: { en: "Link copied", ru: "Ссылка скопирована", uz: "Havola nusxalandi" } as L,
+  // The card a new visitor from a shared link sees: no onboarding happened, so Yui asks here.
+  nameCard: {
+    ok: { en: "OK", ru: "ОК", uz: "OK" } as L,
+    decline: { en: "No thanks, call me guest", ru: "Не нужно, зовите меня гостем", uz: "Shart emas, meni mehmon deb atang" } as L,
+    guestOk: {
+      en: "All right, I'll call you our guest.",
+      ru: "Хорошо, буду называть вас гостем.",
+      uz: "Mayli, sizga mehmon deb murojaat qilaman.",
+    } as L,
+  },
+  /** How Yui's chat addresses a visitor who chose to stay a guest. */
+  guest: { en: "guest", ru: "гость", uz: "mehmon" } as L,
   bootLines: {
     en: ["Initialising core", "Assembling particle lattice", "Calibrating voice module", "Loading developer profile", "Yui online"],
     ru: ["Инициализация ядра", "Сборка решётки частиц", "Калибровка голосового модуля", "Загрузка профиля разработчика", "Юи в сети"],
@@ -156,6 +168,11 @@ export function address(lang: Lang, name: string, honorific: Honorific): string 
   if (lang === "en") return `${honorific === "male" ? "Mr." : "Ms."} ${n}`;
   if (lang === "ru") return `${honorific === "male" ? "господин" : "госпожа"} ${n}`;
   return `${n} ${honorific === "male" ? "janob" : "xonim"}`;
+}
+
+/** Yui's reply when a visitor from a shared link gives a name on the card (live TTS, it names them). */
+export function niceToMeet(lang: Lang, name: string): string {
+  return { en: `Nice to meet you, ${name}.`, ru: `Приятно познакомиться, ${name}.`, uz: `Tanishganimdan xursandman, ${name}.` }[lang];
 }
 
 export function greeting(lang: Lang, name: string, honorific: Honorific, returning: boolean): string {

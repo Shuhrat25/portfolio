@@ -12,6 +12,7 @@ import { useStore } from "@/lib/store";
 import { useViewport } from "@/lib/use-viewport";
 import { narrate, openPanel, stopSpeaking, visitSection } from "@/lib/yui";
 import { MenuButton } from "../MenuButton";
+import { NameCard } from "../NameCard";
 import { About, Cardinal, Contacts, Cv, ExperiencePanel, Projects, Skills } from "./content";
 import { OrderForm } from "./OrderForm";
 
@@ -87,6 +88,7 @@ export function PanelHost() {
   const lang = useStore((s) => s.lang);
   const busy = useStore((s) => s.busy);
   const telling = useStore((s) => s.telling);
+  const nameAsk = useStore((s) => s.nameAsk);
   const { w, h } = useViewport();
   const insets = stageInsets(w, h, panel !== null, true);
   const root = useRef<HTMLElement>(null);
@@ -173,6 +175,8 @@ export function PanelHost() {
             />
           ))}
         </nav>
+        {/* On a phone the panel hides the dock, so the name card moves up here. */}
+        {insets.sheet && nameAsk && <NameCard inSheet />}
       </header>
       <div className="scroll-thin flex-1 overflow-y-auto px-5 py-5">
         <Body />

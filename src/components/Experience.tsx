@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect } from "react";
-import type { PanelId } from "@/content/ui";
+import { ui, type PanelId } from "@/content/ui";
 import { LINK_LANG, readDeepLink } from "@/lib/deep-link";
 import { loadVisitor, store, useStore } from "@/lib/store";
 import { beginDeepLink } from "@/lib/yui";
@@ -19,6 +19,7 @@ const Scene = dynamic(() => import("./scene/Scene"), { ssr: false });
 export default function Experience({ section }: { section?: PanelId }) {
   const phase = useStore((s) => s.phase);
   const lang = useStore((s) => s.lang);
+  const nameAsk = useStore((s) => s.nameAsk);
 
   useEffect(() => {
     const visitor = loadVisitor();
@@ -27,7 +28,7 @@ export default function Experience({ section }: { section?: PanelId }) {
       // A shared link skips onboarding: the language comes from the link, the visitor's last
       // visit or defaults to Russian, and the section opens as soon as the core is up.
       store.set({ ...visitor, lang: link.lang ?? visitor?.lang ?? LINK_LANG, returning: visitor !== null });
-      beginDeepLink(link.panel, link.kind);
+      beginDeepLink(link.panel, link.kind, visitor === null);
       return;
     }
     store.set(visitor ? { ...visitor, returning: true, phase: "resume" } : { phase: "language" });
@@ -55,6 +56,10 @@ export default function Experience({ section }: { section?: PanelId }) {
         </>
       )}
       <Eggs />
+      {/* Always mounted, so screen readers hear the name card's question when it appears. */}
+      <p role="status" className="sr-only">
+        {nameAsk ? ui.askName[lang] : ""}
+      </p>
     </main>
   );
 }

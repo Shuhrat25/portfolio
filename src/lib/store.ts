@@ -41,6 +41,12 @@ export type State = {
   telling: string | null;
   /** Suggested questions already asked this visit; their chips leave the row. */
   faqAsked: string[];
+  /** The "how should I address you?" card is up (a new visitor who came by a shared link). */
+  nameAsk: boolean;
+  /** That visitor closed the card: Yui calls them "guest" for this visit (never saved). */
+  guest: boolean;
+  /** What is typed on the card, kept here so it survives the card moving (dock ↔ panel sheet). */
+  nameDraft: string;
 };
 
 const initial: State = {
@@ -68,6 +74,9 @@ const initial: State = {
   egg: null,
   telling: null,
   faqAsked: [],
+  nameAsk: false,
+  guest: false,
+  nameDraft: "",
 };
 
 let state = initial;
