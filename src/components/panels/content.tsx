@@ -11,15 +11,43 @@ import {
   projects,
   skills,
   spokenLanguages,
+  type CardinalItem,
   type L,
   type Lang,
   type Project,
   type ProjectKind,
 } from "@/content/profile";
 import { ui } from "@/content/ui";
+import { cancelListening } from "@/lib/listen";
+import { sfx } from "@/lib/sfx";
 import { store, useStore } from "@/lib/store";
+import { stopSpeaking, tellCardinal, tellProject } from "@/lib/yui";
+import { MenuIcon } from "../icons";
 
 const ext = { target: "_blank", rel: "noopener noreferrer" } as const;
+
+/** Yui tells the story behind a card or section; pressed while she is telling it, she stops. */
+function TellMore({ id, onTell }: { id: string; onTell: () => void }) {
+  const lang = useStore((s) => s.lang);
+  const active = useStore((s) => s.telling === id && s.busy !== "idle");
+  return (
+    <button
+      type="button"
+      className="btn-tell"
+      aria-pressed={active}
+      onClick={() => {
+        sfx.click();
+        if (active) return stopSpeaking();
+        // The microphone must not hear Yui's story as a question.
+        cancelListening();
+        onTell();
+      }}
+    >
+      <MenuIcon id="tell" size={14} />
+      {active ? ui.stop[lang] : ui.tellMore[lang]}
+    </button>
+  );
+}
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -226,7 +254,8 @@ function ProjectCard({ p, lang }: { p: Project; lang: Lang }) {
           </span>
         ))}
       </div>
-      <div className="mt-3.5 flex gap-4">
+      <div className="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-2.5">
+        {p.story && <TellMore id={p.id} onTell={() => tellProject(p)} />}
         {p.demo && (
           <a href={p.demo} {...ext} className="font-mono text-[0.72rem] uppercase tracking-[0.16em] text-core hover:text-frost">
             ↗ {p.kind === "contribution" ? ui.site[lang] : ui.demo[lang]}
@@ -291,8 +320,61 @@ export function Skills() {
   );
 }
 
+const capital = (s: string) => s.charAt(0).toLocaleUpperCase() + s.slice(1);
+
+/** Bulleted facts; a label ("Cost and speed") leads its line in the accent colour. */
+function Items({ items, lang }: { items: CardinalItem[]; lang: Lang }) {
+  if (items.length === 0) return null;
+  return (
+    <ul className="mt-2.5 space-y-1.5 text-[0.9rem] leading-relaxed text-frost/85">
+      {items.map((it, i) => (
+        <li key={i} className="flex gap-2">
+          <span className="mt-[0.6rem] h-px w-2.5 shrink-0 bg-core/70" />
+          <span>
+            {it.label && <span className="text-ice">{it.label[lang]}: </span>}
+            {it.text[lang]}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The four stages as numbered tiles. */
+function Stages({ items, lang }: { items: CardinalItem[]; lang: Lang }) {
+  return (
+    <ol className="mt-3 grid grid-cols-2 gap-2">
+      {items.map((s, i) => (
+        <li key={i} className="border border-[var(--line)] bg-abyss/60 p-3">
+          <p className="font-mono text-[0.7rem] text-core">0{i + 1}</p>
+          {s.label && <p className="mt-1 text-sm font-semibold">{s.label[lang]}</p>}
+          <p className="mt-1 text-[0.82rem] leading-snug text-frost/75">{capital(s.text[lang])}</p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Quarter-by-quarter plan on a vertical line, like the experience timeline. */
+function Roadmap({ items, lang }: { items: CardinalItem[]; lang: Lang }) {
+  return (
+    <ol className="relative ml-1.5 mt-3 border-l border-[var(--line)]">
+      {items.map((s, i) => (
+        <li key={i} className="relative mb-3.5 pl-5 last:mb-0">
+          <span className="absolute -left-[4.5px] top-1.5 h-2 w-2 rotate-45 border border-core bg-void" />
+          {s.label && <p className="hud-label !text-core">{s.label[lang]}</p>}
+          <p className="mt-0.5 text-[0.9rem] leading-relaxed text-frost/85">{capital(s.text[lang])}</p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+const ITEM_VIEW: Record<string, typeof Items> = { pipeline: Stages, roadmap: Roadmap };
+
 export function Cardinal() {
   const lang = useStore((s) => s.lang);
+  const { ask, team } = cardinal;
   return (
     <div>
       <div className="panel-reveal">
@@ -300,26 +382,47 @@ export function Cardinal() {
         <p className="mt-1 text-ice">{cardinal.tagline[lang]}</p>
       </div>
       <p className="panel-reveal mt-4 leading-relaxed text-frost/90">{cardinal.intro[lang]}</p>
-      <Section label={ui.cardinalPipeline[lang]}>
-        <ol className="grid grid-cols-2 gap-2">
-          {cardinal.pipeline.map((s, i) => (
-            <li key={i} className="border border-[var(--line)] bg-abyss/60 p-3">
-              <p className="font-mono text-[0.7rem] text-core">0{i + 1}</p>
-              <p className="mt-1 text-sm font-semibold">{s.title[lang]}</p>
-              <p className="mt-1 text-[0.82rem] leading-snug text-frost/75">{s.text[lang]}</p>
+      <dl className="panel-reveal mt-4 grid gap-1.5 text-[0.86rem]">
+        {cardinal.facts.map((f, i) => (
+          <div key={i} className="flex gap-3 border-l border-core/40 pl-3">
+            <dt className="hud-label w-24 shrink-0 pt-0.5">{f.label?.[lang]}</dt>
+            <dd className="text-frost/85">{capital(f.text[lang])}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="panel-reveal mt-5">
+        <TellMore id="cardinal" onTell={tellCardinal} />
+      </div>
+      {cardinal.sections.map((s) => {
+        const View = ITEM_VIEW[s.id] ?? Items;
+        return (
+          <Section key={s.id} label={s.title[lang]}>
+            <p className="text-[0.93rem] leading-relaxed text-frost/85">{s.body[lang]}</p>
+            <View items={s.items} lang={lang} />
+          </Section>
+        );
+      })}
+      <Section label={ask.title[lang]}>
+        <p className="border-l-2 border-core bg-core/5 py-2 pl-3 text-[0.93rem] leading-relaxed text-frost">{ask.body[lang]}</p>
+        <ul className="mt-3.5 space-y-2.5">
+          {ask.funds.map((f, i) => (
+            <li key={i}>
+              <div className="flex items-baseline justify-between gap-3 text-[0.85rem]">
+                <span className="text-frost/85">{capital(f.text[lang])}</span>
+                <span className="font-mono text-core">{f.share}%</span>
+              </div>
+              <div className="mt-1 h-1 bg-[var(--line)]">
+                <div className="h-1 bg-core shadow-[0_0_8px_#3db8ff]" style={{ width: `${f.share}%` }} />
+              </div>
             </li>
           ))}
-        </ol>
+        </ul>
+        <Items items={ask.notes} lang={lang} />
       </Section>
-      <Section label="Architecture">
-        <p className="text-[0.93rem] leading-relaxed text-frost/85">{cardinal.architecture[lang]}</p>
-      </Section>
-      <Section label={ui.cardinalModel[lang]}>
-        <p className="text-[0.93rem] leading-relaxed text-frost/85">{cardinal.model[lang]}</p>
-      </Section>
-      <Section label={ui.cardinalAsk[lang]}>
-        <p className="border-l-2 border-core bg-core/5 py-2 pl-3 text-[0.93rem] leading-relaxed text-frost">{cardinal.ask[lang]}</p>
-        <p className="mt-2 text-xs text-dim">{cardinal.status[lang]}</p>
+      <Section label={team.title[lang]}>
+        <p className="text-[0.93rem] leading-relaxed text-frost/85">{team.body[lang]}</p>
+        <Items items={team.items} lang={lang} />
+        <p className="mt-3 text-xs text-dim">{cardinal.status[lang]}</p>
       </Section>
     </div>
   );

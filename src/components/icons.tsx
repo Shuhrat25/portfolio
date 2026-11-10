@@ -41,9 +41,9 @@ const paths: Record<PanelId | "tell", React.ReactNode> = {
   order: <path d="M21 3 3 10.5l7 2.6L12.5 20zM10 13.1 21 3" />,
 };
 
-export function MenuIcon({ id }: { id: PanelId | "tell" }) {
+export function MenuIcon({ id, size = 18 }: { id: PanelId | "tell"; size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       {paths[id]}
     </svg>
   );

@@ -87,14 +87,24 @@ export default function SeoProfile() {
 
         <h2>{`CARDINAL — ${cardinal.tagline.en}`}</h2>
         <p>{cardinal.intro.en}</p>
-        <ol>
-          {cardinal.pipeline.map((s) => (
-            <li key={s.title.en}>{`${s.title.en}: ${s.text.en}`}</li>
+        {[...cardinal.sections, cardinal.team].map((s) => (
+          <section key={s.id}>
+            <h3>{s.title.en}</h3>
+            <p>{s.body.en}</p>
+            <ul>
+              {s.items.map((it) => (
+                <li key={it.text.en}>{it.label ? `${it.label.en}: ${it.text.en}` : it.text.en}</li>
+              ))}
+            </ul>
+          </section>
+        ))}
+        <h3>{cardinal.ask.title.en}</h3>
+        <p>{cardinal.ask.body.en}</p>
+        <ul>
+          {cardinal.ask.funds.map((f) => (
+            <li key={f.share}>{`${f.share}% — ${f.text.en}`}</li>
           ))}
-        </ol>
-        <p>{cardinal.architecture.en}</p>
-        <p>{cardinal.model.en}</p>
-        <p>{cardinal.ask.en}</p>
+        </ul>
         <p>{cardinal.status.en}</p>
 
         <h2>Projects</h2>

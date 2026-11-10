@@ -152,6 +152,40 @@ body {
     outline: none;
   }
 
+  /* "Tell me more": a small edge-cut neon plate that turns pink while Yui is telling. */
+  .btn-tell {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border: 1px solid rgba(62, 224, 255, 0.45);
+    background: rgba(62, 224, 255, 0.07);
+    color: var(--color-neon);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 0.4rem 0.8rem 0.4rem 0.6rem;
+    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+    transition:
+      background 0.2s,
+      border-color 0.2s,
+      color 0.2s,
+      box-shadow 0.2s;
+  }
+  .btn-tell:hover,
+  .btn-tell:focus-visible {
+    border-color: var(--color-neon);
+    background: rgba(62, 224, 255, 0.16);
+    color: var(--color-frost);
+    box-shadow: 0 0 16px rgba(62, 224, 255, 0.35);
+    outline: none;
+  }
+  .btn-tell[aria-pressed="true"] {
+    border-color: var(--color-pink);
+    background: rgba(255, 46, 136, 0.1);
+    color: var(--color-pink);
+  }
+
   .field {
     width: 100%;
     background: rgba(2, 8, 20, 0.6);
@@ -397,21 +431,21 @@ body {
   }
 
   /* Waveform icon dances while Yui is telling the story. */
-  .cp-btn[aria-pressed="true"] .wave {
+  [aria-pressed="true"] .wave {
     transform-box: fill-box;
     transform-origin: center;
     animation: wave 0.9s ease-in-out infinite;
   }
-  .cp-btn[aria-pressed="true"] .wave-2 {
+  [aria-pressed="true"] .wave-2 {
     animation-delay: -0.2s;
   }
-  .cp-btn[aria-pressed="true"] .wave-3 {
+  [aria-pressed="true"] .wave-3 {
     animation-delay: -0.45s;
   }
-  .cp-btn[aria-pressed="true"] .wave-4 {
+  [aria-pressed="true"] .wave-4 {
     animation-delay: -0.1s;
   }
-  .cp-btn[aria-pressed="true"] .wave-5 {
+  [aria-pressed="true"] .wave-5 {
     animation-delay: -0.6s;
   }
   @keyframes wave {

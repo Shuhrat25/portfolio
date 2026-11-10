@@ -103,15 +103,13 @@ export const ui = {
   demo: { en: "Live demo", ru: "Демо", uz: "Demo" } as L,
   code: { en: "Code", ru: "Код", uz: "Kod" } as L,
   site: { en: "Website", ru: "Сайт", uz: "Sayt" } as L,
+  tellMore: { en: "Tell me more", ru: "Рассказать подробнее", uz: "Batafsil aytib ber" } as L,
   education: { en: "Education", ru: "Образование", uz: "Ta’lim" } as L,
   languages: { en: "Languages", ru: "Языки", uz: "Tillar" } as L,
   location: { en: "Location", ru: "Локация", uz: "Joylashuv" } as L,
   cvTitle: { en: "Download CV", ru: "Скачать резюме", uz: "Rezyumeni yuklab olish" } as L,
   cvEn: { en: "English version", ru: "Английская версия", uz: "Inglizcha versiya" } as L,
   cvRu: { en: "Russian version", ru: "Русская версия", uz: "Ruscha versiya" } as L,
-  cardinalPipeline: { en: "How it works", ru: "Как это работает", uz: "Qanday ishlaydi" } as L,
-  cardinalModel: { en: "Business model", ru: "Бизнес-модель", uz: "Biznes-model" } as L,
-  cardinalAsk: { en: "Pre-seed", ru: "Pre-seed", uz: "Pre-seed" } as L,
   order: {
     intro: {
       en: "Tell me about your project — Shuhrat will get back to you personally.",

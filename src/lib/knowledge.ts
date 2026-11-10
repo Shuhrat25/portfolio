@@ -1,4 +1,4 @@
-import { cardinal, contacts, education, experience, person, projects, skills, spokenLanguages, type Lang } from "@/content/profile";
+import { cardinal, contacts, education, experience, person, projects, skills, spokenLanguages, type CardinalItem, type Lang } from "@/content/profile";
 import { PANELS } from "@/content/ui";
 
 const LANGUAGE_NAME: Record<Lang, string> = {
@@ -28,15 +28,18 @@ function facts(): string {
   for (const p of projects) {
     const links = [p.demo && `demo ${p.demo}`, p.code && `code ${p.code}`].filter(Boolean).join(", ");
     lines.push(`- ${p.title} [${p.kind}${p.badge ? `, ${p.badge.en}` : ""}]: ${p.summary.en} Stack: ${p.stack.join(", ")}. ${links}`);
+    if (p.story) lines.push(`  More detail: ${p.story.en}`);
   }
   lines.push("", "SKILLS:");
   for (const s of skills) lines.push(`- ${s.group.en}: ${s.items.join(", ")}`);
   lines.push("", "CARDINAL (his startup):");
-  lines.push(`${cardinal.tagline.en}. ${cardinal.intro.en}`);
-  lines.push(`Pipeline: ${cardinal.pipeline.map((s) => `${s.title.en} — ${s.text.en}`).join(" ")}`);
-  lines.push(`Architecture: ${cardinal.architecture.en}`);
-  lines.push(`Business model: ${cardinal.model.en}`);
-  lines.push(`Fundraising: ${cardinal.ask.en}`);
+  const item = (it: CardinalItem) => (it.label ? `${it.label.en}: ${it.text.en}` : it.text.en);
+  lines.push(`${cardinal.tagline.en}. ${cardinal.intro.en} ${cardinal.facts.map(item).join(" ")}`);
+  for (const s of [...cardinal.sections, cardinal.team]) {
+    lines.push(`${s.title.en}: ${s.body.en} ${s.items.map(item).join(" ")}`.trim());
+  }
+  const { ask } = cardinal;
+  lines.push(`${ask.title.en}: ${ask.body.en} Use of funds: ${ask.funds.map((f) => `${f.share}% ${f.text.en}`).join("; ")}. ${ask.notes.map(item).join(" ")}`);
   lines.push(`Status: ${cardinal.status.en}`);
   lines.push("", "CONTACTS:");
   for (const c of contacts) lines.push(`- ${c.label}: ${c.handle} (${c.href})`);

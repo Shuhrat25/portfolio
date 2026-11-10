@@ -1,7 +1,7 @@
 "use client";
 
 import { narration, sectionLines } from "@/content/narration";
-import type { Lang, ProjectKind } from "@/content/profile";
+import { cardinal, type Lang, type Project, type ProjectKind } from "@/content/profile";
 import { greeting, PANELS, ui, type PanelId } from "@/content/ui";
 import { sfx } from "./sfx";
 import { forgetVisitor, saveVisitor, store } from "./store";
@@ -16,6 +16,7 @@ function newRun() {
   chatAbort?.abort();
   chatAbort = null;
   voice.stop();
+  if (store.get().telling) store.set({ telling: null });
   return run;
 }
 
@@ -133,6 +134,44 @@ export async function narrate() {
     await say(id, step.text[lang], current);
   }
   if (alive(id)) store.set({ busy: "idle" });
+}
+
+/**
+ * "Tell me more": a scripted story in one or more clips, each recorded ahead when there is a file.
+ * It joins the chat history, so a follow-up question knows what was just told.
+ */
+async function tell(key: string, title: string, clips: { file: string; text: string }[]) {
+  if (clips.length === 0) return;
+  const id = newRun();
+  const lang = store.get().lang;
+  const question = `${ui.tellMore[lang]} · ${title}`;
+  store.set((s) => ({
+    busy: "speaking",
+    question,
+    telling: key,
+    history: [...s.history, { role: "user" as const, text: question }, { role: "model" as const, text: clips.map((c) => c.text).join(" ") }].slice(-12),
+  }));
+  let next = scripted(clips[0].file, clips[0].text);
+  for (let i = 0; i < clips.length; i++) {
+    const current = next;
+    if (i + 1 < clips.length) next = scripted(clips[i + 1].file, clips[i + 1].text);
+    await say(id, clips[i].text, current);
+    if (!alive(id)) return;
+  }
+  store.set({ busy: "idle", telling: null });
+}
+
+export function tellProject(p: Project) {
+  if (p.story) void tell(p.id, p.title, [{ file: `project-${p.id}`, text: p.story[store.get().lang] }]);
+}
+
+export function tellCardinal() {
+  const lang = store.get().lang;
+  void tell(
+    "cardinal",
+    "CARDINAL",
+    cardinal.story.map((step, i) => ({ file: `cardinal-${i}`, text: step[lang] })),
+  );
 }
 
 export function stopSpeaking() {

@@ -35,6 +35,8 @@ export type State = {
   listening: boolean;
   /** Chat easter egg currently playing. */
   egg: "matrix" | "glitch" | null;
+  /** The project id (or "cardinal") whose "tell me more" story Yui is telling. */
+  telling: string | null;
 };
 
 const initial: State = {
@@ -59,6 +61,7 @@ const initial: State = {
   quality: "full",
   listening: false,
   egg: null,
+  telling: null,
 };
 
 let state = initial;
