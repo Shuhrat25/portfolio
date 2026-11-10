@@ -22,6 +22,29 @@ const menuRadius = (w: number, h: number) => Math.max(190, Math.min(w * 0.42, h 
 /** The spokes run from this share of the ring radius out to the modules. */
 const SPOKE_FROM = 0.62;
 
+// The subtitle block at its tallest, in px: two question lines, the full text box and the bottom
+// margin. Half a module's height and the air kept between a module and the text.
+const SUBTITLE_BLOCK = 170;
+const MODULE_HALF = 26;
+const MODULE_AIR = 16;
+
+/**
+ * Widest the subtitles may be with the menu up in a free area of w × h: wherever their block
+ * reaches the height of a module, they stay between the modules' inner edges (each module points
+ * at the core, so its edge nearest the centre sits on its anchor).
+ */
+function subtitleWidth(w: number, h: number): number | undefined {
+  const r = menuRadius(w, h);
+  const top = h / 2 - SUBTITLE_BLOCK; // the block's top edge, from the core centre, y down
+  let half = Infinity;
+  for (const id of PANELS) {
+    const a = (ANGLES[id] * Math.PI) / 180;
+    if (-Math.sin(a) * r + MODULE_HALF < top) continue; // the module is above the block
+    half = Math.min(half, Math.abs(Math.cos(a)) * r - MODULE_AIR);
+  }
+  return Number.isFinite(half) ? Math.round(2 * half) : undefined;
+}
+
 function useInsets() {
   const { w, h } = useViewport();
   const panel = useStore((s) => s.panel);
@@ -47,7 +70,7 @@ export function Stage() {
       {menuUp && <RadialMenu w={w - right} h={h - bottom - top} />}
       {/* Only where a click on the core works: the Dock is on screen to lend its mic. */}
       {micAvailable && !sheet && <CoreHint radius={radius} spokes={menuUp ? menuRadius(w - right, h - bottom - top) * SPOKE_FROM : null} />}
-      <Subtitles />
+      <Subtitles maxWidth={menuUp ? subtitleWidth(w - right, h - bottom - top) : undefined} />
     </div>
   );
 }
@@ -215,7 +238,8 @@ function RadialMenu({ w, h }: { w: number; h: number }) {
   );
 }
 
-function Subtitles() {
+/** `maxWidth` keeps a long answer clear of the menu modules beside it. */
+function Subtitles({ maxWidth }: { maxWidth?: number }) {
   const lang = useStore((s) => s.lang);
   const text = useStore((s) => s.subtitle);
   const mode = useStore((s) => s.subtitleMode);
@@ -250,14 +274,15 @@ function Subtitles() {
 
   return (
     <div className="absolute inset-x-0 bottom-3 flex justify-center px-4" aria-live="polite">
-      <div className="w-full max-w-2xl text-center">
-        {question && <p className="mb-2 line-clamp-2 font-mono text-[0.72rem] tracking-wide text-dim">› {question}</p>}
+      <div className="w-full max-w-2xl text-center" style={{ maxWidth }}>
+        {question && <p className="mb-2 line-clamp-2 font-mono text-[0.72rem] tracking-wide text-dim [overflow-wrap:anywhere] [text-shadow:0_1px_10px_rgba(2,5,11,0.95)]">› {question}</p>}
         {busy === "thinking" && !visible ? (
           <p className="hud-label caret !text-ice">{ui.thinking[lang]}</p>
         ) : (
           <p
             ref={box}
-            className={`scroll-thin mx-auto overflow-y-auto leading-relaxed text-frost [text-shadow:0_1px_12px_rgba(2,5,11,0.95)] ${
+            // Long addresses and handles wrap anywhere, or a narrow block would scroll sideways.
+            className={`scroll-thin mx-auto overflow-y-auto leading-relaxed text-frost [overflow-wrap:anywhere] [text-shadow:0_1px_12px_rgba(2,5,11,0.95)] ${
               compact ? "max-h-[4.6rem] text-[0.9rem]" : "max-h-[6.9rem] text-[0.98rem] sm:text-[1.05rem]"
             } ${typing ? "caret" : ""}`}
           >
