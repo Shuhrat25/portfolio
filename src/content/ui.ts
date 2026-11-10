@@ -62,6 +62,9 @@ export const ui = {
     start: { en: "Ask by voice", ru: "Спросить голосом", uz: "Ovoz bilan so‘rash" } as L,
     stop: { en: "Stop recording", ru: "Остановить запись", uz: "Yozishni to‘xtatish" } as L,
     listening: { en: "Listening…", ru: "Слушаю…", uz: "Tinglayapman…" } as L,
+    /** One-time hint above the core: clicking (tapping) the sphere is the same as the mic button. */
+    hintClick: { en: "Click the core to ask by voice", ru: "Нажмите на ядро — спросите голосом", uz: "Yadroni bosing — ovoz bilan so‘rang" } as L,
+    hintTap: { en: "Tap the core to ask by voice", ru: "Коснитесь ядра — спросите голосом", uz: "Yadroga teging — ovoz bilan so‘rang" } as L,
     denied: {
       en: "I can't hear you: microphone access is blocked in the browser.",
       ru: "Я вас не слышу: доступ к микрофону запрещён в браузере.",

@@ -1,10 +1,11 @@
 "use client";
 
-import { useFrame, type RootState } from "@react-three/fiber";
+import { useFrame, useThree, type RootState } from "@react-three/fiber";
 import { useEffect, useState } from "react";
 import * as THREE from "three";
 import type { PanelId } from "@/content/ui";
 import { cameraDistance, stageInsets } from "@/lib/layout";
+import { coreMicReady, pressMicFromCore } from "@/lib/listen";
 import { MENU_ANGLES } from "@/lib/menu-layout";
 import { store } from "@/lib/store";
 import { voice } from "@/lib/voice";
@@ -93,6 +94,23 @@ const SECTION_PALETTES: Partial<Record<PanelId, Palette>> = {
     glow: tone("#f2fbff", WHITE, 1.12),
   },
 };
+
+/** While the visitor speaks: all of it in the pink family, so it reads apart from CARDINAL's pink and cyan. */
+const LISTENING: Palette = {
+  latA: tone("#5c0f46", DEEP),
+  latB: tone("#ffc4e1", ICE),
+  meshA: tone("#5c0f46", DEEP),
+  meshB: tone(PINK, CYAN),
+  dotA: tone(PINK, CYAN),
+  dotB: tone("#ffd9ec", WHITE),
+  ringCyan: tone(PINK, CYAN),
+  ringIce: tone("#ffc4e1", ICE),
+  ringDeep: tone("#b0207a", RING_DEEP),
+  glow: tone("#ffb8dc", WHITE),
+};
+
+/** Click target around the shell, in core radii: the sphere itself, not the HUD rings around it. */
+const HIT_RADIUS = 1.05;
 
 function clonePalette(p: Palette): Palette {
   return Object.fromEntries(SLOTS.map((slot) => [slot, p[slot].clone()])) as Palette;
@@ -192,8 +210,9 @@ type Ring = { object: THREE.LineSegments; material: THREE.LineBasicMaterial; spe
 /**
  * Yui's core, built imperatively: wire lattice + fine mesh + particle shell, a glow sprite
  * and HUD rings. `update` runs every frame and drives everything from the voice level, the
- * open section (hue) and the hovered menu item (lean). Lite builds fewer particles, a coarser
- * lattice and no fine mesh.
+ * open section or the microphone (hue) and the hovered menu item (lean). Lite builds fewer
+ * particles, a coarser lattice and no fine mesh. `bind` makes the sphere a button: hover lights
+ * it, a click asks by voice.
  */
 class CoreRig {
   readonly root = new THREE.Group();
@@ -206,6 +225,7 @@ class CoreRig {
   private readonly rings: Ring[] = [];
   private readonly lattice: THREE.ShaderMaterial;
   private readonly mesh: THREE.ShaderMaterial | null = null;
+  private readonly particles: THREE.ShaderMaterial;
   /** Live colours. Uniforms and materials hold these very objects, so easing them is enough. */
   private readonly tint = clonePalette(carry.tint);
   private readonly lean = carry.lean.clone();
@@ -214,6 +234,18 @@ class CoreRig {
   private readonly scale = new THREE.Vector3(1, 1, 1);
   private readonly shared = { uTime: { value: 0 }, uBass: { value: 0 }, uTreble: { value: 0 }, uEnergy: { value: 0 }, uAssemble: { value: carry.assemble } };
   private holds = 0;
+  // Pointer: the last mouse position over the canvas (NDC), and whether it is still there.
+  private readonly mouse = new THREE.Vector2();
+  private readonly tap = new THREE.Vector2();
+  private mouseIn = false;
+  private readonly ray = new THREE.Raycaster();
+  private readonly hitSphere = new THREE.Sphere();
+  private camera: THREE.Camera | null = null;
+  private canvas: HTMLElement | null = null;
+  /** The mouse is over the sphere while a click would ask by voice. */
+  private over = false;
+  /** Hover light, eased 0..1. */
+  private lit = 0;
 
   constructor(compact: boolean, lite: boolean) {
     const t = this.tint;
@@ -226,7 +258,7 @@ class CoreRig {
       });
     this.lattice = wire(t.latA, t.latB);
 
-    const particles = new THREE.ShaderMaterial({
+    const particles = (this.particles = new THREE.ShaderMaterial({
       vertexShader: particleVertex,
       fragmentShader: particleFragment,
       uniforms: {
@@ -238,7 +270,7 @@ class CoreRig {
         uPixelRatio: { value: lite ? 1 : Math.min(window.devicePixelRatio, 2) },
       },
       ...additive,
-    });
+    }));
 
     // Lite: about a third of the particles (a little larger, so the shell still reads) and a coarser lattice.
     const count = lite ? (compact ? 900 : 1700) : compact ? 2600 : 5200;
@@ -284,6 +316,7 @@ class CoreRig {
     const s = store.get();
     const { camera, size, pointer } = state;
     const t = state.clock.elapsedTime;
+    this.camera = camera;
     const lvl = voice.sample();
     const u = this.shared;
     u.uTime.value = t;
@@ -305,8 +338,6 @@ class CoreRig {
     u.uAssemble.value = THREE.MathUtils.clamp(u.uAssemble.value + Math.sign(target - u.uAssemble.value) * delta * rate, 0, 1);
     const a = u.uAssemble.value;
     const wire = THREE.MathUtils.smoothstep(a, 0.7, 1);
-    this.lattice.uniforms.uOpacity.value = wire * 0.55;
-    if (this.mesh) this.mesh.uniforms.uOpacity.value = wire * 0.2;
 
     // Stay centred in the free area (same rule as the DOM stage).
     const visibleH = 2 * Math.tan(THREE.MathUtils.degToRad(persp.fov / 2)) * persp.position.z;
@@ -320,9 +351,19 @@ class CoreRig {
     this.scale.setScalar(scale);
     this.body.scale.lerp(this.scale, Math.min(1, delta * 4));
 
-    // Section hue: every colour eases to the open section's palette in about a second. The
-    // palettes share one luminance and the blend is linear, so the brightness holds through it.
-    const palette = (s.panel && SECTION_PALETTES[s.panel]) || BASE;
+    // Hover over the sphere, once a click on it would ask by voice: pointer cursor, a little more light.
+    const over = s.phase === "live" && coreMicReady() && this.mouseIn && this.hits(this.mouse);
+    if (over !== this.over) this.setOver(over);
+    this.lit += ((over ? 1 : 0) - this.lit) * ease(8, delta);
+    const lit = 1 + this.lit * 0.22;
+    this.lattice.uniforms.uOpacity.value = wire * 0.55 * lit;
+    if (this.mesh) this.mesh.uniforms.uOpacity.value = wire * 0.2 * lit;
+    this.particles.uniforms.uOpacity.value = 1 + this.lit * 0.12;
+
+    // Hue: every colour eases to the open section's palette (pink while the visitor speaks) in
+    // about a second. The palettes share one luminance and the blend is linear, so the
+    // brightness holds through it.
+    const palette = s.listening ? LISTENING : (s.panel && SECTION_PALETTES[s.panel]) || BASE;
     const hue = ease(3.5, delta);
     for (const slot of SLOTS) this.tint[slot].lerp(palette[slot], hue);
 
@@ -346,19 +387,66 @@ class CoreRig {
     const ringFade = THREE.MathUtils.smoothstep(a, 0.85, 1);
     for (const r of this.rings) {
       r.object.rotation.z += delta * r.speed * (1 + lvl.energy * 1.2);
-      r.material.opacity = ringFade * r.base * (0.85 + lvl.energy * 0.3);
+      r.material.opacity = ringFade * r.base * (0.85 + lvl.energy * 0.3) * lit;
     }
 
     // The inner light breathes slowly; speech only swells it a little.
     const g = (0.92 + lvl.bass * 0.3 + Math.sin(t * 0.9) * 0.03) * (0.4 + a * 0.6);
-    this.glow.scale.setScalar(g * 1.5);
-    this.glow.material.opacity = 0.3 + a * 0.4 + lvl.energy * 0.1;
+    this.glow.scale.setScalar(g * 1.5 * (1 + this.lit * 0.04));
+    this.glow.material.opacity = 0.3 + a * 0.4 + lvl.energy * 0.1 + this.lit * 0.12;
 
     carry.assemble = a;
     carry.offset.copy(this.offset);
     carry.scale = this.body.scale.x;
     carry.lean.copy(this.lean);
     for (const slot of SLOTS) carry.tint[slot].copy(this.tint[slot]);
+  }
+
+  /** Whether a ray through `ndc` meets the shell (the root sits at the origin, so body space is world space). */
+  private hits(ndc: THREE.Vector2) {
+    if (!this.camera) return false;
+    this.ray.setFromCamera(ndc, this.camera);
+    this.hitSphere.center.copy(this.body.position);
+    this.hitSphere.radius = this.body.scale.x * HIT_RADIUS;
+    return this.ray.ray.intersectsSphere(this.hitSphere);
+  }
+
+  private setOver(over: boolean) {
+    this.over = over;
+    if (this.canvas) this.canvas.style.cursor = over ? "pointer" : "";
+    store.set({ coreHover: over });
+  }
+
+  /**
+   * Pointer listeners on the canvas; returns their cleanup. Only a click on the sphere itself
+   * counts: the menu sits above the canvas and the empty background misses the ray test.
+   */
+  bind(canvas: HTMLElement) {
+    this.canvas = canvas;
+    const ndc = (e: MouseEvent, out: THREE.Vector2) =>
+      out.set((e.offsetX / Math.max(1, canvas.clientWidth)) * 2 - 1, 1 - (e.offsetY / Math.max(1, canvas.clientHeight)) * 2);
+    const move = (e: PointerEvent) => {
+      // A touch has no hover; a tap would leave the core lit.
+      this.mouseIn = e.pointerType !== "touch";
+      ndc(e, this.mouse);
+    };
+    const leave = () => {
+      this.mouseIn = false;
+    };
+    const click = (e: MouseEvent) => {
+      if (store.get().phase === "live" && coreMicReady() && this.hits(ndc(e, this.tap))) pressMicFromCore();
+    };
+    canvas.addEventListener("pointermove", move);
+    canvas.addEventListener("pointerleave", leave);
+    canvas.addEventListener("click", click);
+    return () => {
+      canvas.removeEventListener("pointermove", move);
+      canvas.removeEventListener("pointerleave", leave);
+      canvas.removeEventListener("click", click);
+      this.mouseIn = false;
+      if (this.over) this.setOver(false);
+      this.canvas = null;
+    };
   }
 
   retain() {
@@ -392,10 +480,12 @@ class CoreRig {
 
 export function Core({ compact, lite }: { compact: boolean; lite: boolean }) {
   const [rig] = useState(() => new CoreRig(compact, lite));
+  const canvas = useThree((s) => s.gl.domElement);
   useEffect(() => {
     rig.retain();
     return () => rig.release();
   }, [rig]);
+  useEffect(() => rig.bind(canvas), [rig, canvas]);
   useFrame((state, delta) => rig.update(state, delta));
   return <primitive object={rig.root} />;
 }

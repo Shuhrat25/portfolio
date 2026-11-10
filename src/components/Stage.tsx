@@ -2,10 +2,10 @@
 
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { PANELS, ui, type PanelId } from "@/content/ui";
 import { MOBILE, stageInsets } from "@/lib/layout";
-import { cancelListening, startListening, stopListening, useCanListen } from "@/lib/listen";
+import { cancelListening, lendMic, startListening, stopListening, useCanListen } from "@/lib/listen";
 import { MENU_ANGLES } from "@/lib/menu-layout";
 import { useStore } from "@/lib/store";
 import { useViewport } from "@/lib/use-viewport";
@@ -17,6 +17,11 @@ gsap.registerPlugin(useGSAP);
 
 const ANGLES = MENU_ANGLES;
 
+/** Radius of the ring of menu modules in a free area of w × h. */
+const menuRadius = (w: number, h: number) => Math.max(190, Math.min(w * 0.42, h * 0.46, 360));
+/** The spokes run from this share of the ring radius out to the modules. */
+const SPOKE_FROM = 0.62;
+
 function useInsets() {
   const { w, h } = useViewport();
   const panel = useStore((s) => s.panel);
@@ -26,18 +31,119 @@ function useInsets() {
 
 /** The free area around the core; everything in it is centred on the sphere. */
 export function Stage() {
-  const { w, h, top, right, bottom } = useInsets();
+  const { w, h, top, right, bottom, sheet } = useInsets();
   const menuVisible = useStore((s) => s.menuVisible);
   // With a panel open the ring of labels no longer fits; the panel header has its own switcher.
   const panelOpen = useStore((s) => s.panel !== null);
+  const micAvailable = useCanListen();
+  const menuUp = menuVisible && w >= MOBILE && !panelOpen;
+  // Pixels per core radius, as the camera frames it (see cameraDistance) and as the CSS core sizes it.
+  const radius = Math.min(h / 6.6, w / 4.8) * (panelOpen ? 0.78 : 1);
   return (
     <div
       className="pointer-events-none fixed left-0 z-20 transition-[right,bottom] duration-700 ease-out-expo"
       style={{ top, right, bottom }}
     >
-      {menuVisible && w >= MOBILE && !panelOpen && <RadialMenu w={w - right} h={h - bottom - top} />}
+      {menuUp && <RadialMenu w={w - right} h={h - bottom - top} />}
+      {/* Only where a click on the core works: the Dock is on screen to lend its mic. */}
+      {micAvailable && !sheet && <CoreHint radius={radius} spokes={menuUp ? menuRadius(w - right, h - bottom - top) * SPOKE_FROM : null} />}
       <Subtitles />
     </div>
+  );
+}
+
+const HINT_KEY = "yui.coreHint";
+
+function hintSeen() {
+  try {
+    return localStorage.getItem(HINT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function rememberHint() {
+  try {
+    localStorage.setItem(HINT_KEY, "1");
+  } catch {}
+}
+
+type HintStep = "wait" | "show" | "fade" | "gone";
+
+// The spokes nearest the top, either side of "tell": at a height y above the core they are
+// y · tan(gap) to the side, so the hint must stay narrower than that.
+const TOP_GAP = Math.min(...PANELS.map((id) => Math.abs(ANGLES[id] - 90)));
+const SPREAD = Math.tan((TOP_GAP * Math.PI) / 180);
+// The hint plate in px: 0.6rem JetBrains Mono at 0.14em tracking is 7.1 a character, plus the
+// dot, padding and border; one line is 24 tall, two are 39.
+const HINT_CHAR = 7.1;
+const HINT_EXTRA = 40;
+const HINT_LINE = 24;
+const HINT_TWO_LINES = 39;
+
+/**
+ * Once per visitor, a quiet line just above the sphere: it can be clicked (tapped) to ask by voice.
+ * Shown on the first hover over the core or a few seconds after going live, never while the mic
+ * is on. Above the sphere it is clear of the subtitles; with the menu up it also stays inside
+ * the circle where the spokes start (`spokes`, px) and between the two nearest the top.
+ */
+function CoreHint({ radius, spokes }: { radius: number; spokes: number | null }) {
+  const lang = useStore((s) => s.lang);
+  const hover = useStore((s) => s.coreHover);
+  const listening = useStore((s) => s.listening);
+  // Only the CSS core is a button that keyboards and screen readers reach; over the 3D canvas
+  // the hint is for the pointer alone and stays out of the accessibility tree.
+  const reachable = useStore((s) => s.quality === "none");
+  const [touch] = useState(() => window.matchMedia("(pointer: coarse)").matches);
+  const [step, setStep] = useState<HintStep>(() => (hintSeen() ? "gone" : "wait"));
+  // Hover only brings the hint forward: once it is up, the pointer crossing the sphere's edge
+  // must not restart its fade.
+  const hoverToShow = step === "wait" && hover;
+
+  useEffect(() => {
+    if (step === "gone" || (step === "wait" && listening)) return;
+    if (step === "show") rememberHint();
+    // Asking by voice while it is up means it did its job.
+    const [next, ms]: [HintStep, number] =
+      step === "wait" ? ["show", hoverToShow ? 0 : 4000] : step === "show" ? ["fade", listening ? 0 : 5500] : ["gone", 900];
+    const id = setTimeout(() => setStep(next), ms);
+    return () => clearTimeout(id);
+  }, [step, hoverToShow, listening]);
+
+  if (step === "gone") return null;
+  const text = (touch ? ui.mic.hintTap : ui.mic.hintClick)[lang];
+  // A small dark plate, readable over the lit lattice, resting on the sphere. With the menu up its
+  // top edge stays under where the spokes start, and it keeps between the two nearest the top:
+  // on two balanced lines when one is too wide for that gap (short windows, longer languages).
+  const rest = radius * 1.1 + 6;
+  let transform = `translate(-50%, calc(-100% - ${Math.round(rest)}px))`;
+  let maxWidth: number | undefined;
+  let wrap = false;
+  if (spokes !== null) {
+    const top = Math.min(rest + HINT_LINE, spokes - 4);
+    const room = (bottom: number) => Math.floor(2 * (bottom * SPREAD - 8));
+    wrap = text.length * HINT_CHAR + HINT_EXTRA > room(top - HINT_LINE);
+    maxWidth = room(top - (wrap ? HINT_TWO_LINES : HINT_LINE));
+    transform = `translate(-50%, ${-Math.round(top)}px)`;
+  }
+  return (
+    <p
+      role={reachable ? "status" : undefined}
+      aria-hidden={!reachable || undefined}
+      className={`hud-label pointer-events-none absolute left-1/2 top-1/2 w-max max-w-[calc(100vw-2rem)] border border-l-2 border-[var(--line)] border-l-pink bg-void/80 px-2.5 py-1 text-center !text-[0.6rem] !tracking-[0.14em] !text-ice transition-[opacity,translate] duration-700 ease-out-expo motion-reduce:translate-y-0 ${
+        wrap ? "text-balance" : ""
+      } ${step === "show" ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"}`}
+      style={{ transform, maxWidth }}
+    >
+      {step !== "wait" && (
+        <>
+          <span aria-hidden className="mr-2 text-pink">
+            ◉
+          </span>
+          {text}
+        </>
+      )}
+    </p>
   );
 }
 
@@ -46,7 +152,7 @@ function RadialMenu({ w, h }: { w: number; h: number }) {
   const panel = useStore((s) => s.panel);
   const busy = useStore((s) => s.busy);
   const root = useRef<HTMLDivElement>(null);
-  const radius = Math.max(190, Math.min(w * 0.42, h * 0.46, 360));
+  const radius = menuRadius(w, h);
 
   useGSAP(
     () => {
@@ -62,7 +168,7 @@ function RadialMenu({ w, h }: { w: number; h: number }) {
       <svg className="pointer-events-none absolute -left-[400px] -top-[400px] h-[800px] w-[800px] overflow-visible" viewBox="-400 -400 800 800" aria-hidden>
         {items.map((id) => {
           const a = (ANGLES[id] * Math.PI) / 180;
-          const r0 = radius * 0.62;
+          const r0 = radius * SPOKE_FROM;
           const r1 = radius - 1; // ends at the module's arrow tip
           return (
             <line
@@ -186,7 +292,6 @@ export function Dock() {
     if (busy === "narrating") cancelListening();
   }, [busy]);
 
-  if (sheet) return null;
   const send = () => {
     // Enter while listening ends the recording; what was heard is sent from there.
     if (listening) return stopListening();
@@ -212,6 +317,14 @@ export function Dock() {
       onEnd: (sent) => setValue((v) => (v === heard || v === typed ? (sent ? "" : typed) : v)),
     });
   };
+  // A click on the core presses the mic button below, with this render's input and handlers.
+  const pressMic = useEffectEvent(() => toggleMic());
+  useEffect(() => {
+    if (sheet || !micAvailable) return;
+    return lendMic(() => pressMic());
+  }, [sheet, micAvailable]);
+
+  if (sheet) return null;
   return (
     <div ref={root} className="fixed bottom-0 left-0 z-30 flex flex-col justify-end gap-2 px-3 pb-3 sm:px-6 sm:pb-4" style={{ right, height: bottom }}>
       {w < MOBILE && menuVisible && (

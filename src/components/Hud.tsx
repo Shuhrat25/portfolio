@@ -6,6 +6,7 @@ import { setFx, sfx } from "@/lib/sfx";
 import { store, useStore } from "@/lib/store";
 import { voice } from "@/lib/voice";
 import { restartIntro, switchLanguage } from "@/lib/yui";
+import { LogoMark } from "./Logo";
 
 export function TopBar() {
   const phase = useStore((s) => s.phase);
@@ -16,16 +17,20 @@ export function TopBar() {
   const live = phase === "live";
 
   return (
-    <header className="pointer-events-none fixed inset-x-0 top-0 z-40 flex items-start justify-between gap-4 px-4 pt-4 sm:px-6 sm:pt-5">
-      <div className="pointer-events-auto">
-        <div className="flex items-center gap-2">
-          <span className={`h-1.5 w-1.5 rounded-full ${live ? "bg-core shadow-[0_0_10px_#3db8ff]" : "bg-dim"} ${busy !== "idle" ? "animate-pulse" : ""}`} />
-          <span className="font-mono text-[0.72rem] tracking-[0.3em] text-ice">YUI</span>
-          <span className="hud-label hidden sm:inline">{`// ${live ? "online" : "standby"}`}</span>
+    <header className="pointer-events-none fixed inset-x-0 top-0 z-40 flex items-start justify-between gap-3 px-4 pt-4 sm:gap-4 sm:px-6 sm:pt-5">
+      {/* Phones are tight: the controls lose 2px of padding to fit the mark, and under 375px the mark steps aside. */}
+      <div className="pointer-events-auto flex items-center gap-2 sm:gap-3">
+        <LogoMark size={30} className="h-[26px] w-[26px] shrink-0 max-[375px]:hidden sm:h-[30px] sm:w-[30px]" />
+        <div>
+          <div className="flex items-center gap-2">
+            <span className={`h-1.5 w-1.5 rounded-full ${live ? "bg-core shadow-[0_0_10px_#3db8ff]" : "bg-dim"} ${busy !== "idle" ? "animate-pulse" : ""}`} />
+            <span className="font-mono text-[0.72rem] tracking-[0.3em] text-ice">YUI</span>
+            <span className="hud-label hidden sm:inline">{`// ${live ? "online" : "standby"}`}</span>
+          </div>
+          <p className="hud-label mt-1 hidden sm:block">
+            {person.name[lang]} · {person.role[lang]}
+          </p>
         </div>
-        <p className="hud-label mt-1 hidden sm:block">
-          {person.name[lang]} · {person.role[lang]}
-        </p>
       </div>
 
       {live && (
@@ -37,7 +42,7 @@ export function TopBar() {
                 type="button"
                 aria-pressed={l === lang}
                 onClick={() => l !== lang && switchLanguage(l)}
-                className={`px-2 py-1 font-mono text-[0.65rem] tracking-[0.15em] uppercase transition-colors ${
+                className={`px-1.5 py-1 font-mono text-[0.65rem] tracking-[0.15em] uppercase transition-colors sm:px-2 ${
                   l === lang ? "bg-core/20 text-frost" : "text-dim hover:text-ice"
                 }`}
               >
@@ -47,7 +52,7 @@ export function TopBar() {
           </div>
           <button
             type="button"
-            className="border border-[var(--line)] px-2 py-1 font-mono text-[0.65rem] tracking-[0.15em] uppercase text-dim hover:text-ice"
+            className="border border-[var(--line)] px-1.5 py-1 font-mono text-[0.65rem] tracking-[0.15em] uppercase text-dim hover:text-ice sm:px-2"
             aria-pressed={!muted}
             onClick={() => {
               voice.setMuted(!muted);
@@ -58,7 +63,7 @@ export function TopBar() {
           </button>
           <button
             type="button"
-            className="border border-[var(--line)] px-2 py-1 font-mono text-[0.65rem] tracking-[0.15em] uppercase text-dim hover:text-ice"
+            className="border border-[var(--line)] px-1.5 py-1 font-mono text-[0.65rem] tracking-[0.15em] uppercase text-dim hover:text-ice sm:px-2"
             title={ui.fxHint[lang]}
             aria-label={`${ui.fx[lang]} · ${ui.fxHint[lang]}`}
             aria-pressed={fx}
@@ -70,7 +75,7 @@ export function TopBar() {
           >
             {fx ? "◆" : "◇"} {ui.fx[lang]}
           </button>
-          <button type="button" className="border border-[var(--line)] px-2 py-1 font-mono text-[0.65rem] text-dim hover:text-ice" title={ui.restart[lang]} aria-label={ui.restart[lang]} onClick={restartIntro}>
+          <button type="button" className="border border-[var(--line)] px-1.5 py-1 font-mono text-[0.65rem] text-dim hover:text-ice sm:px-2" title={ui.restart[lang]} aria-label={ui.restart[lang]} onClick={restartIntro}>
             ↺
           </button>
         </nav>

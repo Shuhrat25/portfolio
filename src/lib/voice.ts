@@ -47,6 +47,11 @@ class VoiceEngine {
   private startedAt = 0;
   private duration = 0;
   private pulseUntil = 0;
+  /** The visitor's microphone while they ask by voice (lent by listen.ts); only measured, never played. */
+  private input: AnalyserNode | null = null;
+  private inputBins: Uint8Array<ArrayBuffer> = new Uint8Array(0);
+  /** This frame's readings before the envelope, reused so sampling allocates nothing. */
+  private readonly raw: VoiceLevel = { bass: 0, treble: 0, energy: 0 };
   readonly level: VoiceLevel = { bass: 0, treble: 0, energy: 0 };
 
   /**
@@ -161,24 +166,44 @@ class VoiceEngine {
     this.pulseUntil = Math.max(this.pulseUntil, performance.now() + ms);
   }
 
-  /** Called once per frame by the 3D scene. */
-  sample(): VoiceLevel {
+  /** While the visitor speaks, the core moves with their voice the way it moves with Yui's. */
+  hear(analyser: AnalyserNode) {
+    this.input = analyser;
+    if (this.inputBins.length !== analyser.frequencyBinCount) this.inputBins = new Uint8Array(analyser.frequencyBinCount);
+  }
+
+  /** That microphone is closing. A newer one lent in the meantime stays. */
+  unhear(analyser: AnalyserNode) {
+    if (this.input === analyser) this.input = null;
+  }
+
+  /** Folds one spectrum into `raw`: bass is the loudest bin of the lower half, treble the upper half's mean. */
+  private measure(analyser: AnalyserNode, bins: Uint8Array<ArrayBuffer>) {
+    analyser.getByteFrequencyData(bins);
+    const n = bins.length;
+    const half = n >> 1;
     let bass = 0;
     let treble = 0;
     let energy = 0;
-    if (this.analyser && this.source) {
-      this.analyser.getByteFrequencyData(this.bins);
-      const n = this.bins.length;
-      const half = n >> 1;
-      for (let i = 0; i < n; i++) {
-        const v = this.bins[i] / 255;
-        energy += v;
-        if (i < half) bass = Math.max(bass, v);
-        else treble += v;
-      }
-      energy /= n;
-      treble = Math.min(1, (treble / (n - half)) * 4);
+    for (let i = 0; i < n; i++) {
+      const v = bins[i] / 255;
+      energy += v;
+      if (i < half) bass = Math.max(bass, v);
+      else treble += v;
     }
+    const raw = this.raw;
+    raw.bass = Math.max(raw.bass, bass);
+    raw.treble = Math.max(raw.treble, Math.min(1, (treble / (n - half)) * 4));
+    raw.energy = Math.max(raw.energy, energy / n);
+  }
+
+  /** Called once per frame by the 3D scene. */
+  sample(): VoiceLevel {
+    const raw = this.raw;
+    raw.bass = raw.treble = raw.energy = 0;
+    if (this.analyser && this.source) this.measure(this.analyser, this.bins);
+    if (this.input) this.measure(this.input, this.inputBins);
+    let { bass, treble, energy } = raw;
     // Text-only speech: a slow, soft swell instead of fast flashing.
     const now = performance.now();
     if (now < this.pulseUntil) {

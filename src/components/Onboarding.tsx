@@ -9,6 +9,7 @@ import { loadFx, sfx } from "@/lib/sfx";
 import { store, useStore } from "@/lib/store";
 import { voice } from "@/lib/voice";
 import { beginSession, restartIntro } from "@/lib/yui";
+import { LogoMark } from "./Logo";
 
 gsap.registerPlugin(useGSAP);
 
@@ -36,6 +37,11 @@ export function LanguageStep() {
   return (
     <section ref={root} className="fixed inset-0 z-30 grid place-items-center px-4">
       <div className="w-full max-w-sm text-center">
+        {/* The reveal (with its blur) runs on the wrapper so it doesn't fight the mark's own glow filter.
+            Short screens (a phone in landscape) drop the mark: the page can't scroll and the last button must stay reachable. */}
+        <div className="reveal mb-5 flex justify-center [@media(max-height:34rem)]:hidden">
+          <LogoMark size={60} />
+        </div>
         <p className="reveal hud-label">Yui // core · handshake</p>
         <h1 className="reveal glow-text mt-6 font-display text-2xl font-semibold tracking-wide text-frost sm:text-3xl">{ui.pickLanguage.en}</h1>
         <p className="reveal mt-2 text-sm text-dim">

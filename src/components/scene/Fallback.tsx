@@ -1,16 +1,30 @@
 "use client";
 
 import { useEffect, type CSSProperties } from "react";
+import { ui } from "@/content/ui";
 import { stageInsets } from "@/lib/layout";
+import { pressMicFromCore, useCanListen } from "@/lib/listen";
 import { store, useStore } from "@/lib/store";
 import { useViewport } from "@/lib/use-viewport";
 
 // Sizes are in core radii (--d is a diameter), so the rings sit where the WebGL ones would.
 // Every motion is a slow rotation; reduced motion stops them (the global rule alone would only
 // shorten them, and a ring spinning 0.01 ms per turn lands at a random angle every frame).
+// The sphere is a button under the art (which lets the pointer through), so the HUD rings
+// around it are not part of the click target. While the visitor speaks the whole core turns
+// to the pink family; the one pink arc goes cyan first, so the turn takes it to pink too.
 const css = `
-.yfb { position: relative; width: calc(var(--u) * 2); height: calc(var(--u) * 2); perspective: calc(var(--u) * 9);
-  transition: transform 1.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 2.4s ease-out; }
+.yfb { position: relative; width: calc(var(--u) * 2); height: calc(var(--u) * 2);
+  transition: transform 1.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 2.4s ease-out, filter 0.9s ease; }
+.yfb[data-listening] { filter: hue-rotate(130deg) saturate(1.5); }
+.yfb-art { position: absolute; inset: 0; perspective: calc(var(--u) * 9); pointer-events: none; }
+.yfb-btn { position: absolute; inset: 0; border-radius: 50%; pointer-events: auto; cursor: pointer; }
+.yfb-btn:focus-visible { outline: 1px solid rgba(62, 224, 255, 0.75); outline-offset: calc(var(--u) * 0.08); }
+.yfb-light, .yfb-shell { transition: opacity 0.35s ease, box-shadow 0.35s ease; }
+@media (hover: hover) {
+  .yfb-btn:hover ~ .yfb-art .yfb-light { opacity: 0.95; }
+  .yfb-btn:hover ~ .yfb-art .yfb-shell { box-shadow: 0 0 calc(var(--u) * 0.55) rgba(61, 184, 255, 0.34); }
+}
 .yfb-o { position: absolute; border-radius: 50%; width: calc(var(--u) * var(--d)); height: calc(var(--u) * var(--d));
   left: calc(50% - var(--u) * var(--d) / 2); top: calc(50% - var(--u) * var(--d) / 2); }
 .yfb-3d, .yfb-globe, .yfb-axis, .yfb-tilt { position: absolute; inset: 0; transform-style: preserve-3d; }
@@ -44,7 +58,8 @@ const css = `
 .yfb-majors { background: repeating-conic-gradient(rgba(61, 184, 255, 0.75) 0 0.6deg, transparent 0.6deg 10deg);
   -webkit-mask-image: var(--ring); mask-image: var(--ring); --ring: radial-gradient(closest-side, transparent calc(100% - var(--u) * 0.09), #000 calc(100% - var(--u) * 0.09)); }
 .yfb-arcs { border: 1.5px solid transparent; border-top-color: rgba(191, 232, 255, 0.65); border-left-color: rgba(191, 232, 255, 0.22);
-  border-bottom-color: rgba(255, 46, 136, 0.45); }
+  border-bottom-color: rgba(255, 46, 136, 0.45); transition: border-color 0.9s ease; }
+.yfb[data-listening] .yfb-arcs { border-bottom-color: rgba(61, 184, 255, 0.45); }
 .yfb-dash { border: 1px dashed rgba(36, 110, 215, 0.75); }
 .yfb-dash-ice { border: 1px dashed rgba(191, 232, 255, 0.4); }
 @keyframes yfb-spin { to { transform: rotate(360deg); } }
@@ -58,16 +73,27 @@ const css = `
 /** Diameter in core radii, plus the turn period in seconds for the rings that rotate. */
 const orb = (d: number, seconds?: number, extra?: CSSProperties) => ({ "--d": d, "--t": seconds ? `${seconds}s` : undefined, ...extra }) as CSSProperties;
 
+/** The pointer left the sphere, or the sphere stopped being a button. */
+const leaveCore = () => {
+  if (store.get().coreHover) store.set({ coreHover: false });
+};
+
 /**
  * The core without WebGL: layered gradients, a wire globe and slowly turning dashed rings,
- * sized and centred like the 3D core (same free-area rule, same camera framing).
+ * sized and centred like the 3D core (same free-area rule, same camera framing). Like the 3D
+ * sphere, it asks by voice when clicked.
  */
 export function Fallback() {
   const { w, h } = useViewport();
+  const lang = useStore((s) => s.lang);
   const panelOpen = useStore((s) => s.panel !== null);
   const live = useStore((s) => s.phase === "live");
   const assembled = useStore((s) => s.phase === "boot" || s.phase === "live");
+  const listening = useStore((s) => s.listening);
+  const micAvailable = useCanListen();
   const { top, right, bottom, sheet } = stageInsets(w, h, panelOpen, live);
+  // Wherever the dock's mic button is on screen to lend its toggle (see listen.ts).
+  const clickable = live && micAvailable && !sheet;
   // Pixels per world unit at the distance cameraDistance() puts the camera.
   const unit = Math.min(h / 6.6, w / 4.8);
   // Faint and a little smaller during onboarding, like the dust before the core assembles.
@@ -77,42 +103,67 @@ export function Fallback() {
   useEffect(() => {
     store.set({ sceneReady: true });
   }, []);
+  useEffect(() => {
+    if (!clickable) leaveCore();
+    return leaveCore;
+  }, [clickable]);
 
+  const label = listening ? ui.mic.stop[lang] : ui.mic.start[lang];
   return (
     <div
-      aria-hidden
       className="pointer-events-none fixed left-0 grid place-items-center transition-[top,right,bottom] duration-700 ease-out-expo"
       style={{ top, right, bottom }}
     >
       <style>{css}</style>
-      <div className="yfb" style={{ "--u": `${unit}px`, opacity: assembled ? 1 : 0.4, transform: `scale(${scale})` } as CSSProperties}>
-        <i className="yfb-o yfb-halo" style={orb(5.4)} />
-        <i className="yfb-o yfb-shell" style={orb(2)} />
-        <i className="yfb-o yfb-dots" style={orb(2.04)} />
-        <div className="yfb-3d">
-          <div className="yfb-globe">
-            <div className="yfb-axis yfb-anim" style={orb(2, 60)}>
-              {[0, 45, 90, 135].map((a) => (
-                <i key={a} className="yfb-o yfb-wire" style={orb(2, undefined, { transform: `rotateY(${a}deg)` })} />
-              ))}
-              <i className="yfb-o yfb-wire" style={orb(2, undefined, { transform: "rotateX(90deg)" })} />
-              {[1, -1].map((side) => (
-                <i key={side} className="yfb-o yfb-wire" style={orb(1.64, undefined, { transform: `rotateX(90deg) translateZ(calc(var(--u) * ${0.574 * side}))` })} />
-              ))}
+      <div
+        className="yfb"
+        data-listening={listening || undefined}
+        style={{ "--u": `${unit}px`, opacity: assembled ? 1 : 0.4, transform: `scale(${scale})` } as CSSProperties}
+      >
+        {clickable && (
+          <button
+            type="button"
+            className="yfb-btn"
+            aria-label={label}
+            aria-pressed={listening}
+            title={label}
+            onPointerEnter={(e) => {
+              // A tap fires pointerenter too, and no leave after it.
+              if (e.pointerType !== "touch") store.set({ coreHover: true });
+            }}
+            onPointerLeave={leaveCore}
+            onClick={() => pressMicFromCore()}
+          />
+        )}
+        <div aria-hidden className="yfb-art">
+          <i className="yfb-o yfb-halo" style={orb(5.4)} />
+          <i className="yfb-o yfb-shell" style={orb(2)} />
+          <i className="yfb-o yfb-dots" style={orb(2.04)} />
+          <div className="yfb-3d">
+            <div className="yfb-globe">
+              <div className="yfb-axis yfb-anim" style={orb(2, 60)}>
+                {[0, 45, 90, 135].map((a) => (
+                  <i key={a} className="yfb-o yfb-wire" style={orb(2, undefined, { transform: `rotateY(${a}deg)` })} />
+                ))}
+                <i className="yfb-o yfb-wire" style={orb(2, undefined, { transform: "rotateX(90deg)" })} />
+                {[1, -1].map((side) => (
+                  <i key={side} className="yfb-o yfb-wire" style={orb(1.64, undefined, { transform: `rotateX(90deg) translateZ(calc(var(--u) * ${0.574 * side}))` })} />
+                ))}
+              </div>
+            </div>
+            <div className="yfb-tilt" style={{ transform: "rotateX(72deg) rotateY(17deg)" }}>
+              <i className="yfb-o yfb-dash-ice yfb-anim" style={orb(2.44, 45)} />
+            </div>
+            <div className="yfb-tilt" style={{ transform: "rotateX(-63deg) rotateY(-29deg)" }}>
+              <i className="yfb-o yfb-arcs yfb-anim yfb-rev" style={orb(2.6, 70)} />
             </div>
           </div>
-          <div className="yfb-tilt" style={{ transform: "rotateX(72deg) rotateY(17deg)" }}>
-            <i className="yfb-o yfb-dash-ice yfb-anim" style={orb(2.44, 45)} />
-          </div>
-          <div className="yfb-tilt" style={{ transform: "rotateX(-63deg) rotateY(-29deg)" }}>
-            <i className="yfb-o yfb-arcs yfb-anim yfb-rev" style={orb(2.6, 70)} />
-          </div>
+          <i className="yfb-o yfb-light" style={orb(1.7)} />
+          <i className="yfb-o yfb-ticks yfb-anim" style={orb(2.9, 160)} />
+          <i className="yfb-o yfb-majors yfb-anim" style={orb(2.98, 160)} />
+          <i className="yfb-o yfb-arcs yfb-anim yfb-rev" style={orb(3.24, 100)} />
+          <i className="yfb-o yfb-dash yfb-anim" style={orb(3.72, 220)} />
         </div>
-        <i className="yfb-o yfb-light" style={orb(1.7)} />
-        <i className="yfb-o yfb-ticks yfb-anim" style={orb(2.9, 160)} />
-        <i className="yfb-o yfb-majors yfb-anim" style={orb(2.98, 160)} />
-        <i className="yfb-o yfb-arcs yfb-anim yfb-rev" style={orb(3.24, 100)} />
-        <i className="yfb-o yfb-dash yfb-anim" style={orb(3.72, 220)} />
       </div>
     </div>
   );

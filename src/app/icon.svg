@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Tab cut of the S-orbit mark (components/Logo.tsx): dark tile for light and dark tab bars, bolder S, no hexagon. -->
+  <radialGradient id="glow">
+    <stop offset="0" stop-color="#0b4a99" stop-opacity=".75"/>
+    <stop offset="1" stop-color="#0b4a99" stop-opacity="0"/>
+  </radialGradient>
+  <rect width="32" height="32" rx="7" fill="#02050b"/>
+  <circle cx="16" cy="16" r="15" fill="url(#glow)"/>
+  <path d="M21.71 6.86A5.9 5.9 0 1 0 16 16A5.9 5.9 0 1 1 10.29 25.14" fill="none" stroke="#3ee0ff" stroke-width="3.8" stroke-linecap="round"/>
+  <circle cx="16" cy="16" r="3.5" fill="#e8f7ff"/>
+  <circle cx="10.29" cy="25.14" r="3.4" fill="#ff2e88"/>
+</svg>

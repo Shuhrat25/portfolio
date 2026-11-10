@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "voice": "node scripts/generate-voice.mjs",
-    "previews": "node scripts/capture-previews.mjs"
+    "previews": "node scripts/capture-previews.mjs",
+    "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

@@ -33,6 +33,8 @@ export type State = {
   quality: "full" | "lite" | "none";
   /** Microphone is recording a question. */
   listening: boolean;
+  /** Mouse over the core while a click on it would ask by voice. */
+  coreHover: boolean;
   /** Chat easter egg currently playing. */
   egg: "matrix" | "glitch" | null;
   /** The project id (or "cardinal") whose "tell me more" story Yui is telling. */
@@ -60,6 +62,7 @@ const initial: State = {
   fx: false,
   quality: "full",
   listening: false,
+  coreHover: false,
   egg: null,
   telling: null,
 };

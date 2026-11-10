@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { markArt } from "@/components/Logo";
 import { SITE_URL } from "@/components/SeoProfile";
 import { person } from "@/content/profile";
 
@@ -15,6 +16,7 @@ const CORE = "#3db8ff";
 const FROST = "#eef7ff";
 const ICE = "#bfe8ff";
 const DIM = "#6f8fb3";
+const MARK_SIZE = 136;
 
 // Sphere of particles: a Fibonacci lattice, tilted, projected flat. Back-facing points are dimmer and smaller.
 const R = 170;
@@ -213,22 +215,36 @@ export default async function Image() {
             <div style={{ display: "flex" }}>{"PORTFOLIO  //  YUI ONLINE"}</div>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              marginTop: 30,
-              fontSize: 84,
-              lineHeight: 1,
-              letterSpacing: -2,
-              textShadow: `0 0 28px rgba(61, 184, 255, 0.5)`,
-            }}
-          >
-            <div style={{ display: "flex" }}>{first}</div>
-            <div style={{ display: "flex" }}>{rest.join(" ")}</div>
+          {/* Lockup: the S-orbit mark with a neon bloom, then the name, sized so it stays clear of the sphere. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 26, marginTop: 42 }}>
+            <svg width={MARK_SIZE} height={MARK_SIZE} viewBox="0 0 120 120">
+              <defs>
+                <filter id="bloom" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation={2.4} result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+              <g filter="url(#bloom)">{markArt()}</g>
+            </svg>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                fontSize: 70,
+                lineHeight: 1,
+                letterSpacing: -2,
+                textShadow: `0 0 28px rgba(61, 184, 255, 0.5)`,
+              }}
+            >
+              <div style={{ display: "flex" }}>{first}</div>
+              <div style={{ display: "flex" }}>{rest.join(" ")}</div>
+            </div>
           </div>
 
-          <div style={{ display: "flex", marginTop: 26, fontSize: 36, color: NEON, textShadow: `0 0 18px rgba(62, 224, 255, 0.55)` }}>
+          <div style={{ display: "flex", marginTop: 30, fontSize: 36, color: NEON, textShadow: `0 0 18px rgba(62, 224, 255, 0.55)` }}>
             {person.role.en}
           </div>
 
@@ -256,7 +272,7 @@ export default async function Image() {
               display: "flex",
               alignItems: "center",
               gap: 14,
-              marginTop: 38,
+              marginTop: 50,
               alignSelf: "flex-start",
               padding: "14px 24px",
               fontSize: 28,

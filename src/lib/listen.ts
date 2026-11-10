@@ -35,6 +35,8 @@ type Recognition = {
   onresult: ((event: { results: SpeechRecognitionResultList }) => void) | null;
   onerror: ((event: { error: string }) => void) | null;
   onend: (() => void) | null;
+  onaudiostart: (() => void) | null;
+  onspeechstart: (() => void) | null;
   start(): void;
   stop(): void;
   abort(): void;
@@ -61,6 +63,26 @@ const never = () => () => {};
 /** canListen() for components: false while server rendering, so hydration matches. */
 export function useCanListen(): boolean {
   return useSyncExternalStore(never, canListen, () => false);
+}
+
+// The Dock lends its mic toggle while it is on screen, so a click on the core presses that very
+// button: the same handlers, the same words in the input. Without a Dock the core does nothing.
+let dockMic: (() => void) | null = null;
+
+/** Dock: lend the mic toggle to the core; the returned function takes it back. */
+export function lendMic(toggle: () => void) {
+  dockMic = toggle;
+  return () => {
+    if (dockMic === toggle) dockMic = null;
+  };
+}
+
+/** Whether a click on the core would ask by voice right now. */
+export const coreMicReady = () => dockMic !== null;
+
+/** A click on the core: the Dock's mic button, pressed (start, or stop and send). */
+export function pressMicFromCore() {
+  dockMic?.();
 }
 
 type Session = { stop(): void; cancel(): void };
@@ -130,17 +152,29 @@ function recognize(id: number, Ctor: RecognitionCtor, lang: Lang, handlers: List
   let error = "";
   let byUser = false;
   let cancelled = false;
+  const meter = new SideMeter();
 
+  // Recognition has the microphone now, so the meter's own capture needs no second prompt.
+  rec.onaudiostart = () => {
+    if (!cancelled && id === session) void meter.open();
+  };
+  // Without a level to read (touch devices) the words themselves swell the core a little.
+  rec.onspeechstart = () => {
+    if (id === session && !meter.live) voice.pulse(900);
+  };
   rec.onresult = (event) => {
     heard = Array.from(event.results, (r) => r[0]?.transcript ?? "")
       .join("")
       .trim();
-    if (id === session) handlers.onInterim?.(heard);
+    if (id !== session) return;
+    handlers.onInterim?.(heard);
+    if (!meter.live) voice.pulse(700);
   };
   rec.onerror = (event) => {
     error = event.error;
   };
   rec.onend = () => {
+    meter.close();
     if (cancelled || id !== session) return;
     if (!heard && (error === "network" || error === "language-not-supported" || error === "service-not-allowed")) {
       if (error === "language-not-supported") speechUnsupported.add(lang);
@@ -162,14 +196,78 @@ function recognize(id: number, Ctor: RecognitionCtor, lang: Lang, handlers: List
     },
     cancel: () => {
       cancelled = true;
+      meter.close();
       rec.abort();
     },
   };
   try {
     rec.start();
   } catch {
+    meter.close();
     speechOffline = true;
     record(id, lang, handlers);
+  }
+}
+
+function newAudioContext(): AudioContext {
+  const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  return new Ctx();
+}
+
+/** An analyser on `source` that the core reads as the visitor's voice (voice.hear); a quiet room reads as silence. */
+function lendLevel(ctx: AudioContext, source: AudioNode): AnalyserNode {
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.5;
+  analyser.minDecibels = -85;
+  source.connect(analyser); // not to the speakers
+  voice.hear(analyser);
+  return analyser;
+}
+
+// Touch devices never open a second capture: beside recognition it can break it (Android).
+// Nor does the CSS core (quality "none"): only the 3D one reads the level.
+const sideMeterAllowed = () => store.get().quality !== "none" && window.matchMedia("(pointer: fine)").matches && !/Android/i.test(navigator.userAgent);
+
+/**
+ * Web Speech shares no stream, so on desktop a second capture, read only by the core's level
+ * meter, runs beside it. Its tracks are always stopped when the session ends, however it ends.
+ */
+class SideMeter {
+  private stream: MediaStream | null = null;
+  private ctx: AudioContext | null = null;
+  private level: AnalyserNode | null = null;
+  private opened = false;
+  private closed = false;
+
+  get live() {
+    return this.level !== null;
+  }
+
+  async open() {
+    if (this.opened || this.closed || !sideMeterAllowed()) return;
+    this.opened = true;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // The session ended while the capture was starting.
+      if (this.closed) return stream.getTracks().forEach((t) => t.stop());
+      this.stream = stream;
+      this.ctx = newAudioContext();
+      this.level = lendLevel(this.ctx, this.ctx.createMediaStreamSource(stream));
+      if (this.ctx.state === "suspended") void this.ctx.resume().catch(() => {});
+    } catch {
+      this.close(); // no meter: recognition events pulse the core instead
+    }
+  }
+
+  close() {
+    this.closed = true;
+    if (this.level) voice.unhear(this.level);
+    this.level = null;
+    this.stream?.getTracks().forEach((t) => t.stop());
+    this.stream = null;
+    void this.ctx?.close().catch(() => {});
+    this.ctx = null;
   }
 }
 
@@ -187,7 +285,8 @@ function record(id: number, lang: Lang, handlers: ListenHandlers) {
 
 /**
  * Fallback recording: microphone → MediaRecorder, ended by a pause after speech, a second click
- * or the 12 s cap, then transcribed on the server. An AnalyserNode watches the input level.
+ * or the 12 s cap, then transcribed on the server. An AnalyserNode watches the input level, and
+ * a second one lends it to the core.
  */
 class Recording implements Session {
   private readonly id: number;
@@ -196,6 +295,7 @@ class Recording implements Session {
   private stream: MediaStream | null = null;
   private recorder: MediaRecorder | null = null;
   private ctx: AudioContext | null = null;
+  private level: AnalyserNode | null = null;
   private chunks: Blob[] = [];
   private meter = 0;
   private cap = 0;
@@ -267,12 +367,13 @@ class Recording implements Session {
   /** Ends after ~1.5 s of quiet once speech was heard, or when nothing is said at all. */
   private watch(stream: MediaStream) {
     try {
-      const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const ctx = new Ctx();
+      const ctx = newAudioContext();
       this.ctx = ctx;
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 1024;
-      ctx.createMediaStreamSource(stream).connect(analyser); // not to the speakers
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser); // not to the speakers
+      this.level = lendLevel(ctx, source);
       if (ctx.state === "suspended") void ctx.resume().catch(() => {});
       const samples = new Float32Array(analyser.fftSize);
       this.meter = window.setInterval(() => this.sample(analyser, samples), 100);
@@ -298,6 +399,8 @@ class Recording implements Session {
   private release() {
     clearInterval(this.meter);
     clearTimeout(this.cap);
+    if (this.level) voice.unhear(this.level);
+    this.level = null;
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     void this.ctx?.close().catch(() => {});
