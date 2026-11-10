@@ -19,6 +19,8 @@ export const ui = {
   skip: { en: "Skip intro", ru: "Пропустить", uz: "O‘tkazib yuborish" } as L,
   back: { en: "Back", ru: "Назад", uz: "Orqaga" } as L,
   close: { en: "Close", ru: "Закрыть", uz: "Yopish" } as L,
+  copyLink: { en: "Copy a link to this section", ru: "Скопировать ссылку на раздел", uz: "Bo‘lim havolasini nusxalash" } as L,
+  linkCopied: { en: "Link copied", ru: "Ссылка скопирована", uz: "Havola nusxalandi" } as L,
   bootLines: {
     en: ["Initialising core", "Assembling particle lattice", "Calibrating voice module", "Loading developer profile", "Yui online"],
     ru: ["Инициализация ядра", "Сборка решётки частиц", "Калибровка голосового модуля", "Загрузка профиля разработчика", "Юи в сети"],
@@ -107,6 +109,8 @@ export const ui = {
   code: { en: "Code", ru: "Код", uz: "Kod" } as L,
   site: { en: "Website", ru: "Сайт", uz: "Sayt" } as L,
   tellMore: { en: "Tell me more", ru: "Рассказать подробнее", uz: "Batafsil aytib ber" } as L,
+  suggestions: { en: "Suggested questions", ru: "Подсказки: частые вопросы", uz: "Tavsiya etilgan savollar" } as L,
+  onePager: { en: "One-pager · PDF", ru: "One-pager · PDF", uz: "One-pager · PDF" } as L,
   education: { en: "Education", ru: "Образование", uz: "Ta’lim" } as L,
   languages: { en: "Languages", ru: "Языки", uz: "Tillar" } as L,
   location: { en: "Location", ru: "Локация", uz: "Joylashuv" } as L,

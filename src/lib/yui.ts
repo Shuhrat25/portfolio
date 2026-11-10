@@ -1,9 +1,10 @@
 "use client";
 
 import { narration, sectionLines } from "@/content/narration";
+import type { Faq } from "@/content/faq";
 import { cardinal, type Lang, type Project, type ProjectKind } from "@/content/profile";
 import { greeting, PANELS, ui, type PanelId } from "@/content/ui";
-import { sfx } from "./sfx";
+import { loadFx, sfx } from "./sfx";
 import { forgetVisitor, saveVisitor, store } from "./store";
 import { voice } from "./voice";
 
@@ -29,8 +30,9 @@ function show(text: string, mode: "audio" | "type" | "stream") {
 /** Speak one clip with subtitles. Without audio the text is typed and the core pulses. */
 async function say(id: number, text: string, audio: Promise<AudioBuffer | null> | AudioBuffer | null) {
   const buffer = await audio;
+  const playable = buffer !== null && (await voice.ready());
   if (!alive(id)) return;
-  if (buffer) {
+  if (buffer && playable) {
     show(text, "audio");
     await voice.play(buffer);
   } else {
@@ -57,6 +59,7 @@ const BOOT_MAX_MS = 11000;
  */
 export function beginSession() {
   voice.unlock();
+  armGestures();
   saveVisitor();
   const audio = prepareGreeting();
   store.set({ phase: "boot", menuVisible: false, panel: null, subtitle: "", question: "" });
@@ -75,10 +78,51 @@ export function beginSession() {
   });
 }
 
+const DEEP_BOOT_MIN_MS = 1200;
+// A touch counts as a gesture only on release, and a screen reader's activation arrives as a bare
+// click, so each of these may be the one that unlocks audio.
+const GESTURES = ["pointerdown", "pointerup", "touchend", "click", "keydown"] as const;
+let gesturesArmed = false;
+
+/**
+ * For the rest of the visit, any gesture brings Yui's voice back when it is not playing: the first
+ * one on a shared link, and after Safari interrupts audio (a call, a lock, a background tab).
+ * Cheap: it only acts when the context is not running.
+ */
+function armGestures() {
+  if (gesturesArmed) return;
+  gesturesArmed = true;
+  const wake = () => {
+    if (!voice.running) voice.unlock();
+  };
+  for (const type of GESTURES) window.addEventListener(type, wake, { capture: true, passive: true });
+}
+
+/**
+ * A shared link straight to a section: no onboarding and no greeting, the section opens with its
+ * line as soon as the core is up. Nothing has been clicked yet, so the browser keeps audio locked:
+ * the line is typed, and Yui's voice is unlocked by the visitor's first gesture.
+ */
+export function beginDeepLink(panel: PanelId, kind?: ProjectKind) {
+  armGestures();
+  loadFx(); // the onboarding screens restore it on a normal visit; a link skips them
+  store.set({ phase: "boot", menuVisible: false, panel: null, subtitle: "", question: "" });
+  const started = performance.now();
+  const sceneUp = new Promise<void>((resolve) => {
+    const check = () => (store.get().sceneReady && performance.now() - started > DEEP_BOOT_MIN_MS ? resolve() : setTimeout(check, 100));
+    check();
+  });
+  void Promise.race([sceneUp, new Promise((r) => setTimeout(r, BOOT_MAX_MS))]).then(() => {
+    store.set({ phase: "live", menuVisible: true });
+    void visitSection(panel);
+    if (kind) openPanel(panel, kind);
+  });
+}
+
 export function restartIntro() {
   newRun();
   forgetVisitor();
-  store.set({ phase: "language", returning: false, name: "", honorific: "name", panel: null, menuVisible: false, subtitle: "", question: "", busy: "idle", history: [] });
+  store.set({ phase: "language", returning: false, name: "", honorific: "name", panel: null, menuVisible: false, subtitle: "", question: "", busy: "idle", history: [], faqAsked: [] });
 }
 
 export function switchLanguage(lang: Lang) {
@@ -140,14 +184,16 @@ export async function narrate() {
  * "Tell me more": a scripted story in one or more clips, each recorded ahead when there is a file.
  * It joins the chat history, so a follow-up question knows what was just told.
  */
-async function tell(key: string, title: string, clips: { file: string; text: string }[]) {
+async function tell(key: string, question: string, clips: { file: string; text: string }[]) {
   if (clips.length === 0) return;
   const id = newRun();
-  const lang = store.get().lang;
-  const question = `${ui.tellMore[lang]} · ${title}`;
+  // The previous answer leaves at once; "Processing" covers the wait for the first clip (a missing
+  // recording falls back to live TTS, which takes a few seconds).
   store.set((s) => ({
-    busy: "speaking",
+    busy: "thinking",
     question,
+    subtitle: "",
+    subtitleMode: "type",
     telling: key,
     history: [...s.history, { role: "user" as const, text: question }, { role: "model" as const, text: clips.map((c) => c.text).join(" ") }].slice(-12),
   }));
@@ -155,23 +201,36 @@ async function tell(key: string, title: string, clips: { file: string; text: str
   for (let i = 0; i < clips.length; i++) {
     const current = next;
     if (i + 1 < clips.length) next = scripted(clips[i + 1].file, clips[i + 1].text);
-    await say(id, clips[i].text, current);
+    const buffer = await current;
+    if (!alive(id)) return;
+    store.set({ busy: "speaking" });
+    await say(id, clips[i].text, buffer);
     if (!alive(id)) return;
   }
   store.set({ busy: "idle", telling: null });
 }
 
+const tellMore = (title: string) => `${ui.tellMore[store.get().lang]} · ${title}`;
+
 export function tellProject(p: Project) {
-  if (p.story) void tell(p.id, p.title, [{ file: `project-${p.id}`, text: p.story[store.get().lang] }]);
+  if (p.story) void tell(p.id, tellMore(p.title), [{ file: `project-${p.id}`, text: p.story[store.get().lang] }]);
 }
 
 export function tellCardinal() {
   const lang = store.get().lang;
   void tell(
     "cardinal",
-    "CARDINAL",
+    tellMore("CARDINAL"),
     cardinal.story.map((step, i) => ({ file: `cardinal-${i}`, text: step[lang] })),
   );
+}
+
+/** A suggested question: its checked answer, with the section it is about opened alongside. */
+export function askFaq(item: Faq) {
+  const lang = store.get().lang;
+  store.set((s) => ({ faqAsked: s.faqAsked.includes(item.id) ? s.faqAsked : [...s.faqAsked, item.id] }));
+  if (item.panel) openPanel(item.panel, item.kind ?? "all");
+  void tell(`faq:${item.id}`, item.q[lang], [{ file: `faq-${item.id}`, text: item.a[lang] }]);
 }
 
 export function stopSpeaking() {
@@ -278,8 +337,9 @@ export async function ask(question: string) {
       const item = queue[spoken++];
       store.set({ busy: "speaking" });
       const buffer = await item.audio;
+      const playable = buffer !== null && (await voice.ready());
       if (!alive(id)) break;
-      if (buffer) await voice.play(buffer);
+      if (buffer && playable) await voice.play(buffer);
     }
     playing = false;
     if (alive(id) && streamDone && spoken >= queue.length) store.set({ busy: "idle" });

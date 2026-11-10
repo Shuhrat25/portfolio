@@ -17,6 +17,7 @@ const { synthesize, GeminiError } = await import("../src/lib/gemini.ts");
 const { narration, sectionLines } = await import("../src/content/narration.ts");
 const { greeting } = await import("../src/content/ui.ts");
 const { cardinal, projects } = await import("../src/content/profile.ts");
+const { faq } = await import("../src/content/faq.ts");
 
 const force = process.argv.includes("--force");
 const only = process.argv.find((a) => a.startsWith("--only="))?.slice(7);
@@ -27,7 +28,8 @@ for (const lang of langs) {
   jobs.push({ lang, file: "greeting", text: greeting(lang, "", "name", false) });
   for (const [panel, text] of Object.entries(sectionLines)) jobs.push({ lang, file: `section-${panel}`, text: text[lang] });
   narration.forEach((step, i) => jobs.push({ lang, file: `narration-${i}`, text: step.text[lang] }));
-  // "Tell me more" stories, CARDINAL first.
+  // Suggested questions first (the most tapped), then the "Tell me more" stories, CARDINAL first.
+  for (const item of faq) jobs.push({ lang, file: `faq-${item.id}`, text: item.a[lang] });
   cardinal.story.forEach((step, i) => jobs.push({ lang, file: `cardinal-${i}`, text: step[lang] }));
   for (const p of projects) if (p.story) jobs.push({ lang, file: `project-${p.id}`, text: p.story[lang] });
 }

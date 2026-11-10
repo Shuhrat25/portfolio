@@ -2,8 +2,10 @@
 
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { Lang } from "@/content/profile";
 import { PANELS, ui, type PanelId } from "@/content/ui";
+import { LINK_LANG } from "@/lib/deep-link";
 import { stageInsets } from "@/lib/layout";
 import { sfx } from "@/lib/sfx";
 import { useStore } from "@/lib/store";
@@ -26,10 +28,65 @@ const BODY: Record<PanelId, () => React.ReactNode> = {
   order: OrderForm,
 };
 
+/** Copies a link that opens the site straight on this section, in this language and filter. */
+function CopyLink({ panel, lang }: { panel: PanelId; lang: Lang }) {
+  const filter = useStore((s) => s.projectFilter);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const id = setTimeout(() => setCopied(false), 1800);
+    return () => clearTimeout(id);
+  }, [copied]);
+
+  const copy = async () => {
+    sfx.click();
+    const query = new URLSearchParams();
+    if (panel === "projects" && filter !== "all") query.set("kind", filter);
+    if (lang !== LINK_LANG) query.set("lang", lang);
+    // toString(), not .size: URLSearchParams.size is missing before Safari 17 / Chrome 113.
+    const qs = query.toString();
+    const url = `${window.location.origin}/${panel}${qs ? `?${qs}` : ""}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      window.prompt(ui.copyLink[lang], url); // no clipboard access: let the visitor copy it by hand
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={copy}
+        className="btn-ghost border border-[var(--line)] px-2.5 py-1.5"
+        aria-label={ui.copyLink[lang]}
+        title={copied ? ui.linkCopied[lang] : ui.copyLink[lang]}
+      >
+        {copied ? (
+          <span className="text-core" aria-hidden>
+            ✓
+          </span>
+        ) : (
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" />
+          </svg>
+        )}
+      </button>
+      {/* A changed button name is often not read out, so the result is announced separately. */}
+      <span role="status" className="sr-only">
+        {copied ? ui.linkCopied[lang] : ""}
+      </span>
+    </>
+  );
+}
+
 export function PanelHost() {
   const panel = useStore((s) => s.panel);
   const lang = useStore((s) => s.lang);
   const busy = useStore((s) => s.busy);
+  const telling = useStore((s) => s.telling);
   const { w, h } = useViewport();
   const insets = stageInsets(w, h, panel !== null, true);
   const root = useRef<HTMLElement>(null);
@@ -67,7 +124,9 @@ export function PanelHost() {
   const Body = BODY[panel];
   const index = PANELS.indexOf(panel) + 1;
   const close = () => {
-    if (busy !== "thinking") stopSpeaking();
+    // A chat question still being answered is left alone; a story or a suggested answer whose audio
+    // is still loading belongs to this panel, so it stops with it.
+    if (busy !== "thinking" || telling) stopSpeaking();
     openPanel(null);
   };
 
@@ -86,9 +145,12 @@ export function PanelHost() {
             <p className="hud-label">{`0${index} // ${panel}`}</p>
             <h2 className="glow-text mt-1 font-display text-lg font-semibold tracking-wide sm:text-xl">{ui.menu[panel][lang]}</h2>
           </div>
-          <button type="button" onClick={close} className="btn-ghost border border-[var(--line)] px-3 py-1.5" aria-label={ui.close[lang]}>
-            ✕
-          </button>
+          <div className="flex shrink-0 gap-2">
+            <CopyLink key={panel} panel={panel} lang={lang} />
+            <button type="button" onClick={close} className="btn-ghost border border-[var(--line)] px-3 py-1.5" aria-label={ui.close[lang]}>
+              ✕
+            </button>
+          </div>
         </div>
         <nav className="scroll-thin -mx-5 mt-3 flex gap-1.5 overflow-x-auto px-5 pb-0.5" aria-label="Sections">
           <MenuButton

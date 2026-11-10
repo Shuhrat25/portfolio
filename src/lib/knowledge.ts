@@ -44,6 +44,7 @@ function facts(): string {
   lines.push("", "CONTACTS:");
   for (const c of contacts) lines.push(`- ${c.label}: ${c.handle} (${c.href})`);
   lines.push("- CV: downloadable on this site in English and Russian.");
+  lines.push("- CARDINAL one-pager (PDF): downloadable in the CARDINAL section.");
   return lines.join("\n");
 }
 

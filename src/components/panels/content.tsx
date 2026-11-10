@@ -390,8 +390,14 @@ export function Cardinal() {
           </div>
         ))}
       </dl>
-      <div className="panel-reveal mt-5">
+      <div className="panel-reveal mt-5 flex flex-wrap items-center gap-2.5">
         <TellMore id="cardinal" onTell={tellCardinal} />
+        <a href="/cardinal/CARDINAL_One_Pager.pdf" download className="btn-tell" onClick={() => sfx.click()}>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+          </svg>
+          {ui.onePager[lang]}
+        </a>
       </div>
       {cardinal.sections.map((s) => {
         const View = ITEM_VIEW[s.id] ?? Items;

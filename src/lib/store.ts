@@ -39,6 +39,8 @@ export type State = {
   egg: "matrix" | "glitch" | null;
   /** The project id (or "cardinal") whose "tell me more" story Yui is telling. */
   telling: string | null;
+  /** Suggested questions already asked this visit; their chips leave the row. */
+  faqAsked: string[];
 };
 
 const initial: State = {
@@ -65,6 +67,7 @@ const initial: State = {
   coreHover: false,
   egg: null,
   telling: null,
+  faqAsked: [],
 };
 
 let state = initial;

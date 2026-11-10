@@ -75,7 +75,8 @@ class VoiceEngine {
       this.gain.connect(this.ctx.destination);
       this.bins = new Uint8Array(this.analyser.frequencyBinCount);
     }
-    if (this.ctx.state === "suspended") void this.ctx.resume();
+    // "interrupted" (Safari after a call, a lock or a background tab) needs a resume as well.
+    if (this.ctx.state !== "running" && this.ctx.state !== "closed") this.ctx.resume().catch(() => {});
   }
 
   setMuted(muted: boolean) {
@@ -93,7 +94,8 @@ class VoiceEngine {
 
   /** Live TTS, remembered in the browser's Cache Storage so a phrase is fetched once per visitor. */
   async tts(text: string, lang: Lang, signal?: AbortSignal): Promise<AudioBuffer | null> {
-    if (!text.trim()) return null;
+    // Before the first click (a shared link) audio is locked: nothing could play it, so no request.
+    if (!text.trim() || !this.ctx) return null;
     try {
       const store = await openVoiceCache();
       const id = store ? new Request(`/__yui/tts/${await digest(`${lang}\u0000${text}`)}`) : null;
@@ -115,6 +117,7 @@ class VoiceEngine {
   }
 
   async file(url: string, signal?: AbortSignal): Promise<AudioBuffer | null> {
+    if (!this.ctx) return null;
     try {
       return await this.fromResponse(await fetch(url, { signal }));
     } catch {
@@ -153,6 +156,34 @@ class VoiceEngine {
 
   get playing() {
     return this.source !== null;
+  }
+
+  /**
+   * Audio actually plays. A context made outside a gesture the browser accepts (a touch counts only
+   * on release) stays suspended: a clip started there would never end, so it is shown as text.
+   */
+  get running() {
+    return this.ctx?.state === "running";
+  }
+
+  /**
+   * Whether a clip can play now, after a short wait for a context that is starting: Firefox and
+   * Safari resume asynchronously after the unlocking gesture.
+   */
+  async ready(ms = 700): Promise<boolean> {
+    const ctx = this.ctx;
+    if (!ctx) return false;
+    if (ctx.state === "running") return true;
+    await new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        ctx.removeEventListener("statechange", done);
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
+      ctx.addEventListener("statechange", done);
+    });
+    return this.running;
   }
 
   /** 0..1 progress of the current clip, used to reveal subtitles in sync. */

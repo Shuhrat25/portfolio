@@ -3,14 +3,16 @@
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { faq, type Faq } from "@/content/faq";
 import { PANELS, ui, type PanelId } from "@/content/ui";
 import { MOBILE, stageInsets } from "@/lib/layout";
 import { cancelListening, lendMic, startListening, stopListening, useCanListen } from "@/lib/listen";
 import { MENU_ANGLES } from "@/lib/menu-layout";
+import { sfx } from "@/lib/sfx";
 import { useStore } from "@/lib/store";
 import { useViewport } from "@/lib/use-viewport";
 import { voice } from "@/lib/voice";
-import { ask, narrate, stopSpeaking, visitSection } from "@/lib/yui";
+import { ask, askFaq, narrate, stopSpeaking, visitSection } from "@/lib/yui";
 import { MenuButton } from "./MenuButton";
 
 gsap.registerPlugin(useGSAP);
@@ -294,7 +296,75 @@ function Subtitles({ maxWidth }: { maxWidth?: number }) {
   );
 }
 
-/** Bottom dock: chat input, plus menu chips on phones. */
+/**
+ * Focuses what `find` returns once it can take focus: a panel that has just opened is still hidden
+ * by its intro animation for a frame or two, and focusing a hidden element does nothing.
+ */
+function focusWhenShown(find: () => HTMLElement | null, frames = 30) {
+  requestAnimationFrame(() => {
+    const el = find();
+    el?.focus();
+    if (el && document.activeElement !== el && frames > 0) focusWhenShown(find, frames - 1);
+  });
+}
+
+/**
+ * Suggested questions above the chat input, in a row that scrolls sideways. A tapped one leaves
+ * the row; its answer is checked and recorded ahead. The row keeps its height when it is empty,
+ * so the core never jumps.
+ */
+function Suggestions() {
+  const lang = useStore((s) => s.lang);
+  const asked = useStore((s) => s.faqAsked);
+  const row = useRef<HTMLDivElement>(null);
+  const lastAsked = useRef(-Infinity);
+  const next = faq.filter((f) => !asked.includes(f.id));
+
+  const choose = (f: Faq, index: number, clicks: number, at: number) => {
+    // The second click of a double-click, a double Enter or a held key would land on the chip that
+    // slides into this one's place and ask it unheard.
+    if (clicks > 1 || at - lastAsked.current < 600) return;
+    lastAsked.current = at;
+    const hadFocus = row.current?.contains(document.activeElement) ?? false;
+    sfx.click();
+    // The mic must not hear the answer as a new question.
+    cancelListening();
+    askFaq(f);
+    if (!hadFocus) return;
+    // The chip leaves the row: keep focus nearby instead of dropping it to the page. The next chip,
+    // else the chat input (only from the keyboard: on a tablet it would raise the on-screen
+    // keyboard), else the panel's ✕ on a phone, where the panel replaces the dock.
+    const keyboard = clicks === 0;
+    focusWhenShown(() => {
+      const chips = row.current?.querySelectorAll("button");
+      return (
+        chips?.[Math.min(index, chips.length - 1)] ??
+        (keyboard ? document.querySelector<HTMLElement>('input[maxlength="600"]') : null) ??
+        document.querySelector<HTMLElement>(`aside button[aria-label="${ui.close[lang]}"]`)
+      );
+    });
+  };
+
+  return (
+    <div ref={row} className="scroll-thin mx-auto flex h-8 w-full max-w-2xl shrink-0 gap-1.5 overflow-x-auto" role="group" aria-label={ui.suggestions[lang]}>
+      {next.map((f, i) => (
+        <button
+          key={f.id}
+          type="button"
+          className="chip shrink-0 whitespace-nowrap !py-1 transition-colors hover:!border-neon hover:!text-frost focus-visible:!border-neon focus-visible:outline-none"
+          onClick={(e) => choose(f, i, e.detail, e.timeStamp)}
+          // A held Enter repeats; each repeat would ask the chip that just took focus.
+          onKeyDown={(e) => e.repeat && e.preventDefault()}
+        >
+          <span className="text-core">›</span>
+          {f.q[lang]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Bottom dock: suggested questions and the chat input, plus menu chips on phones. */
 export function Dock() {
   const { w, right, bottom, sheet } = useInsets();
   const lang = useStore((s) => s.lang);
@@ -367,6 +437,7 @@ export function Dock() {
           ))}
         </div>
       )}
+      <Suggestions />
       <form
         className="holo mx-auto flex w-full max-w-2xl items-center gap-2 py-1.5 pl-4 pr-1.5"
         onSubmit={(e) => {
