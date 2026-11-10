@@ -1,6 +1,7 @@
 "use client";
 
 import type { Lang } from "@/content/profile";
+import { store } from "./store";
 
 export type VoiceLevel = { bass: number; treble: number; energy: number };
 
@@ -12,6 +13,19 @@ async function openVoiceCache(): Promise<Cache | null> {
   } catch {
     return null; // private mode or blocked storage
   }
+}
+
+const words = (text: string) => text.toLocaleLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
+
+/**
+ * True when the text addresses the visitor by name, also inflected ("Дилноза" → "Дилнозе",
+ * "Dilnozaga"): such clips stay out of the server's shared cache.
+ */
+export function namesVisitor(text: string, name = store.get().name): boolean {
+  const stems = words(name).map((w) => (w.length > 3 ? w.slice(0, -1) : w));
+  if (stems.length === 0) return false;
+  const said = words(text);
+  return stems.some((stem) => said.some((w) => (stem.length > 2 ? w.startsWith(stem) : w === stem)));
 }
 
 async function digest(text: string): Promise<string> {
@@ -35,11 +49,19 @@ class VoiceEngine {
   private pulseUntil = 0;
   readonly level: VoiceLevel = { bass: 0, treble: 0, energy: 0 };
 
-  /** Must be called from a user gesture (click) so the browser allows audio. */
+  /**
+   * Must be called from a user gesture (click) so the browser allows audio. Never throws: a
+   * browser without Web Audio still gets the visit, only silent (subtitles keep working).
+   */
   unlock() {
     if (!this.ctx) {
-      const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      this.ctx = new Ctx();
+      const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      try {
+        this.ctx = new Ctx();
+      } catch {
+        return;
+      }
       this.analyser = this.ctx.createAnalyser();
       this.analyser.fftSize = 512;
       this.analyser.smoothingTimeConstant = 0.55;
@@ -75,7 +97,7 @@ class VoiceEngine {
       const res = await fetch("/api/tts", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text, lang }),
+        body: JSON.stringify({ text, lang, personal: namesVisitor(text) }),
         signal,
       });
       if (res.ok && store && id) {

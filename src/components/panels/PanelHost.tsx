@@ -5,6 +5,7 @@ import gsap from "gsap";
 import { useEffect, useRef } from "react";
 import { PANELS, ui, type PanelId } from "@/content/ui";
 import { stageInsets } from "@/lib/layout";
+import { sfx } from "@/lib/sfx";
 import { useStore } from "@/lib/store";
 import { useViewport } from "@/lib/use-viewport";
 import { narrate, openPanel, stopSpeaking, visitSection } from "@/lib/yui";
@@ -45,6 +46,10 @@ export function PanelHost() {
     },
     { scope: root, dependencies: [panel], revertOnUpdate: true },
   );
+
+  useEffect(() => {
+    if (panel) sfx.open();
+  }, [panel]);
 
   // Keep the current section's tab visible in the header switcher.
   useEffect(() => {

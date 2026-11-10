@@ -47,8 +47,14 @@ async function fetchWithin(url: string, init: RequestInit, ms: number, signal?: 
 
 export type ChatTurn = { role: "user" | "model"; text: string };
 
+/**
+ * `complete()` turns true once the model reported finishReason STOP: the answer was not cut off
+ * by the token limit or a safety/recitation block.
+ */
+export type ChatStream = { stream: ReadableStream<Uint8Array>; complete: () => boolean };
+
 /** Streams plain text deltas from the first model that accepts the request. */
-export async function streamChat(system: string, turns: ChatTurn[], signal?: AbortSignal): Promise<ReadableStream<Uint8Array>> {
+export async function streamChat(system: string, turns: ChatTurn[], signal?: AbortSignal): Promise<ChatStream> {
   const body = (thinking: string) =>
     JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
@@ -72,11 +78,12 @@ export async function streamChat(system: string, turns: ChatTurn[], signal?: Abo
   throw new GeminiError(lastStatus);
 }
 
-function sseToText(source: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+function sseToText(source: ReadableStream<Uint8Array>): ChatStream {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let buffer = "";
-  return source.pipeThrough(
+  let reason = "";
+  const stream = source.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
         buffer += decoder.decode(chunk, { stream: true });
@@ -86,9 +93,11 @@ function sseToText(source: ReadableStream<Uint8Array>): ReadableStream<Uint8Arra
           if (!line.startsWith("data:")) continue;
           try {
             const data = JSON.parse(line.slice(5));
-            const parts: { text?: string; thought?: boolean }[] = data.candidates?.[0]?.content?.parts ?? [];
+            const candidate = data.candidates?.[0];
+            const parts: { text?: string; thought?: boolean }[] = candidate?.content?.parts ?? [];
             const text = parts.filter((p) => !p.thought).map((p) => p.text ?? "").join("");
             if (text) controller.enqueue(encoder.encode(text));
+            if (candidate?.finishReason) reason = candidate.finishReason;
           } catch {
             // ignore partial or keep-alive lines
           }
@@ -96,6 +105,7 @@ function sseToText(source: ReadableStream<Uint8Array>): ReadableStream<Uint8Arra
       },
     }),
   );
+  return { stream, complete: () => reason === "STOP" };
 }
 
 // English TTS says "Shurat" for the Uzbek spelling; the "kh" spelling gets the h-sound right.

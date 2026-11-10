@@ -1,6 +1,21 @@
 "use client";
 
-import { cardinal, contacts, education, experience, person, projects, skills, spokenLanguages, type ProjectKind } from "@/content/profile";
+import Image from "next/image";
+import { useRef, useState } from "react";
+import {
+  cardinal,
+  contacts,
+  education,
+  experience,
+  person,
+  projects,
+  skills,
+  spokenLanguages,
+  type L,
+  type Lang,
+  type Project,
+  type ProjectKind,
+} from "@/content/profile";
 import { ui } from "@/content/ui";
 import { store, useStore } from "@/lib/store";
 
@@ -83,6 +98,150 @@ export function ExperiencePanel() {
 
 const FILTERS: (ProjectKind | "all")[] = ["all", "3d", "fullstack", "mobile", "contribution"];
 
+const shotAlt: L = { en: "screenshot of the live demo", ru: "скриншот демо", uz: "demo skrinshoti" };
+const liveTag: L = { en: "Live preview", ru: "Живое превью", uz: "Jonli ko‘rinish" };
+
+const HOVER = "(hover: hover) and (pointer: fine)";
+const REDUCED = "(prefers-reduced-motion: reduce)";
+
+// Cut top-right and bottom-left corners, like the menu plates. The inner face is cut 0.6px less so
+// the 1px neon edge keeps its width along the diagonals too.
+const CUT = 14;
+const cut = (c: number) => `polygon(0 0, calc(100% - ${c}px) 0, 100% ${c}px, 100% 100%, ${c}px 100%, 0 calc(100% - ${c}px))`;
+const EDGE = { clipPath: cut(CUT) };
+const FACE = { clipPath: cut(CUT - 0.6) };
+const SCANLINES = {
+  background:
+    "repeating-linear-gradient(to bottom, rgba(2, 5, 11, 0.26) 0 1px, transparent 1px 3px), linear-gradient(to top, rgba(2, 5, 11, 0.6), transparent 42%)",
+};
+const TILE = {
+  background:
+    "radial-gradient(ellipse at 50% 60%, rgba(61, 184, 255, 0.16), transparent 65%), linear-gradient(rgba(62, 224, 255, 0.06) 1px, transparent 1px) 0 0 / 22px 22px, linear-gradient(90deg, rgba(62, 224, 255, 0.06) 1px, transparent 1px) 0 0 / 22px 22px, #030a16",
+};
+
+// Starts or pauses a card's loop. The file is attached on the first play, so nothing downloads
+// until a desktop visitor hovers or focuses a 3D card; touch screens and reduced motion keep the poster.
+function setLoop(video: HTMLVideoElement | null, on: boolean) {
+  if (!video) return;
+  if (!on) return video.pause();
+  if (!window.matchMedia(HOVER).matches || window.matchMedia(REDUCED).matches) return;
+  if (!video.getAttribute("src") && video.dataset.src) video.src = video.dataset.src;
+  video.play().catch(() => {});
+}
+
+/** "Video Player" → VP, "TalentPulse" → TP, "Metafora" → ME. */
+function initials(title: string) {
+  const words = title.split(/\s+/).filter(Boolean);
+  const caps = words.length > 1 ? words.map((w) => w[0]) : (title.match(/\p{Lu}/gu) ?? []);
+  return (caps.length > 1 ? caps.join("") : title.slice(0, 2)).slice(0, 3).toUpperCase();
+}
+
+function Placeholder({ p, lang }: { p: Project; lang: Lang }) {
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2" style={TILE}>
+      <span className="absolute left-0 top-3 h-7 w-[3px] bg-pink shadow-[0_0_10px_var(--color-pink)]" />
+      <span className="absolute bottom-3 right-3 h-3 w-3 border-b border-r border-neon/50" />
+      <span aria-hidden="true" className="font-cyber text-4xl font-bold tracking-[0.2em] text-neon [text-shadow:0_0_18px_rgba(62,224,255,0.45)]">
+        {initials(p.title)}
+      </span>
+      {p.kind === "mobile" && <span className="hud-label !text-[0.6rem]">{ui.noPreview[lang]}</span>}
+    </div>
+  );
+}
+
+function ProjectCard({ p, lang }: { p: Project; lang: Lang }) {
+  const video = useRef<HTMLVideoElement>(null);
+  const [live, setLive] = useState(false);
+  const loop = p.preview?.video;
+  // Cards without a loop have no video, so these are no-ops there.
+  const play = () => setLoop(video.current, true);
+  const stop = () => setLoop(video.current, false);
+  return (
+    <article
+      onPointerEnter={play}
+      onPointerLeave={stop}
+      onFocus={play}
+      onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && stop()}
+      className="panel-reveal group border border-[var(--line)] bg-abyss/60 p-4 transition-colors focus-within:border-core/60 hover:border-core/60"
+    >
+      <div className="mb-3.5 transition-[filter] duration-300 group-focus-within:drop-shadow-[0_0_8px_rgba(62,224,255,0.35)] group-hover:drop-shadow-[0_0_8px_rgba(62,224,255,0.35)]">
+        <div className="bg-neon/25 p-px transition-colors duration-300 group-focus-within:bg-neon/80 group-hover:bg-neon/80" style={EDGE}>
+          <div className={`relative overflow-hidden bg-void ${p.preview ? "aspect-[16/10]" : "aspect-[16/7]"}`} style={FACE}>
+            {p.preview ? (
+              <>
+                <Image
+                  src={p.preview.image}
+                  alt={`${p.title} — ${shotAlt[lang]}`}
+                  width={960}
+                  height={600}
+                  sizes="(max-width: 1023px) 100vw, 580px"
+                  loading="lazy"
+                  className="h-full w-full object-cover transition-transform duration-700 ease-out motion-safe:group-hover:scale-[1.03]"
+                />
+                {loop && (
+                  <video
+                    ref={video}
+                    data-src={loop}
+                    muted
+                    loop
+                    playsInline
+                    preload="none"
+                    disablePictureInPicture
+                    aria-hidden="true"
+                    tabIndex={-1}
+                    onPlaying={() => setLive(true)}
+                    onPause={() => setLive(false)}
+                    className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${live ? "opacity-100" : "opacity-0"}`}
+                  />
+                )}
+              </>
+            ) : (
+              <Placeholder p={p} lang={lang} />
+            )}
+            <span aria-hidden="true" className="pointer-events-none absolute inset-0" style={SCANLINES} />
+            {loop && (
+              <span
+                aria-hidden="true"
+                className={`hud-label pointer-events-none absolute bottom-2.5 left-3 flex items-center gap-1.5 !text-[0.58rem] !text-ice transition-opacity duration-300 pointer-coarse:hidden motion-reduce:hidden ${live ? "opacity-0" : "opacity-100"}`}
+              >
+                <span className="text-pink">▶</span>
+                {liveTag[lang]}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="flex items-start justify-between gap-3">
+        <h4 className="font-display text-[0.98rem] font-semibold">{p.title}</h4>
+        <span className="hud-label shrink-0 !text-[0.6rem]">
+          {ui.filters[p.kind][lang]}
+          {p.badge ? ` · ${p.badge[lang]}` : ""}
+        </span>
+      </div>
+      <p className="mt-2 text-[0.9rem] leading-relaxed text-frost/80">{p.summary[lang]}</p>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {p.stack.map((s) => (
+          <span key={s} className="chip !text-[0.62rem]">
+            {s}
+          </span>
+        ))}
+      </div>
+      <div className="mt-3.5 flex gap-4">
+        {p.demo && (
+          <a href={p.demo} {...ext} className="font-mono text-[0.72rem] uppercase tracking-[0.16em] text-core hover:text-frost">
+            ↗ {p.kind === "contribution" ? ui.site[lang] : ui.demo[lang]}
+          </a>
+        )}
+        {p.code && (
+          <a href={p.code} {...ext} className="font-mono text-[0.72rem] uppercase tracking-[0.16em] text-dim hover:text-frost">
+            {"</>"} {ui.code[lang]}
+          </a>
+        )}
+      </div>
+    </article>
+  );
+}
+
 export function Projects() {
   const lang = useStore((s) => s.lang);
   const filter = useStore((s) => s.projectFilter);
@@ -106,35 +265,7 @@ export function Projects() {
       </div>
       <div className="grid gap-3">
         {list.map((p) => (
-          <article key={p.id} className="panel-reveal group border border-[var(--line)] bg-abyss/60 p-4 transition-colors hover:border-core/60">
-            <div className="flex items-start justify-between gap-3">
-              <h4 className="font-display text-[0.98rem] font-semibold">{p.title}</h4>
-              <span className="hud-label shrink-0 !text-[0.6rem]">
-                {ui.filters[p.kind][lang]}
-                {p.badge ? ` · ${p.badge[lang]}` : ""}
-              </span>
-            </div>
-            <p className="mt-2 text-[0.9rem] leading-relaxed text-frost/80">{p.summary[lang]}</p>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {p.stack.map((s) => (
-                <span key={s} className="chip !text-[0.62rem]">
-                  {s}
-                </span>
-              ))}
-            </div>
-            <div className="mt-3.5 flex gap-4">
-              {p.demo && (
-                <a href={p.demo} {...ext} className="font-mono text-[0.72rem] uppercase tracking-[0.16em] text-core hover:text-frost">
-                  ↗ {p.kind === "contribution" ? ui.site[lang] : ui.demo[lang]}
-                </a>
-              )}
-              {p.code && (
-                <a href={p.code} {...ext} className="font-mono text-[0.72rem] uppercase tracking-[0.16em] text-dim hover:text-frost">
-                  {"</>"} {ui.code[lang]}
-                </a>
-              )}
-            </div>
-          </article>
+          <ProjectCard key={p.id} p={p} lang={lang} />
         ))}
       </div>
     </div>

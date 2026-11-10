@@ -2,6 +2,7 @@
 
 import { LANGS, person } from "@/content/profile";
 import { ui } from "@/content/ui";
+import { setFx, sfx } from "@/lib/sfx";
 import { store, useStore } from "@/lib/store";
 import { voice } from "@/lib/voice";
 import { restartIntro, switchLanguage } from "@/lib/yui";
@@ -10,6 +11,7 @@ export function TopBar() {
   const phase = useStore((s) => s.phase);
   const lang = useStore((s) => s.lang);
   const muted = useStore((s) => s.muted);
+  const fx = useStore((s) => s.fx);
   const busy = useStore((s) => s.busy);
   const live = phase === "live";
 
@@ -53,6 +55,20 @@ export function TopBar() {
             }}
           >
             {muted ? "◌" : "◉"} {ui.sound[lang]}
+          </button>
+          <button
+            type="button"
+            className="border border-[var(--line)] px-2 py-1 font-mono text-[0.65rem] tracking-[0.15em] uppercase text-dim hover:text-ice"
+            title={ui.fxHint[lang]}
+            aria-label={`${ui.fx[lang]} · ${ui.fxHint[lang]}`}
+            aria-pressed={fx}
+            onClick={() => {
+              setFx(!fx);
+              // The confirmation chirp; turning FX off stays silent.
+              if (!fx) sfx.click();
+            }}
+          >
+            {fx ? "◆" : "◇"} {ui.fx[lang]}
           </button>
           <button type="button" className="border border-[var(--line)] px-2 py-1 font-mono text-[0.65rem] text-dim hover:text-ice" title={ui.restart[lang]} aria-label={ui.restart[lang]} onClick={restartIntro}>
             ↺

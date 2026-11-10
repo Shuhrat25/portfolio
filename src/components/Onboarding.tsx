@@ -5,6 +5,7 @@ import gsap from "gsap";
 import { useEffect, useRef, useState } from "react";
 import { LANGS, person, type Lang } from "@/content/profile";
 import { address, ui, type Honorific } from "@/content/ui";
+import { loadFx, sfx } from "@/lib/sfx";
 import { store, useStore } from "@/lib/store";
 import { voice } from "@/lib/voice";
 import { beginSession, restartIntro } from "@/lib/yui";
@@ -24,9 +25,13 @@ function useReveal() {
 
 export function LanguageStep() {
   const root = useReveal();
+  // Every visit starts here or on the resume screen: the right moment to restore FX.
+  useEffect(loadFx, []);
   const choose = (lang: Lang) => {
-    voice.unlock();
     store.set({ lang, phase: "name" });
+    // Still inside the click, so the browser allows audio.
+    voice.unlock();
+    sfx.click();
   };
   return (
     <section ref={root} className="fixed inset-0 z-30 grid place-items-center px-4">
@@ -60,6 +65,7 @@ export function NameStep() {
   useEffect(() => input.current?.focus(), []);
 
   const submit = (skip: boolean) => {
+    sfx.click();
     store.set({
       name: skip ? "" : name.trim().slice(0, 40),
       honorific: skip ? "name" : (honorific ?? "name"),
@@ -112,7 +118,14 @@ export function NameStep() {
           {ui.continue[lang]}
         </button>
         <div className="reveal mt-5 flex items-center justify-between">
-          <button type="button" className="btn-ghost" onClick={() => store.set({ phase: "language" })}>
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => {
+              sfx.click();
+              store.set({ phase: "language" });
+            }}
+          >
             ← {ui.back[lang]}
           </button>
           <button type="button" className="btn-ghost" onClick={() => submit(true)}>
@@ -129,6 +142,7 @@ export function ResumeStep() {
   const name = useStore((s) => s.name);
   const honorific = useStore((s) => s.honorific);
   const root = useReveal();
+  useEffect(loadFx, []);
   const who = address(lang, name, honorific);
   const title = { en: "Welcome back", ru: "С возвращением", uz: "Xush kelibsiz" }[lang];
   const connect = { en: "Connect to Yui", ru: "Подключиться к Юи", uz: "Yui’ga ulanish" }[lang];
@@ -140,10 +154,24 @@ export function ResumeStep() {
           {title}
           {who ? `, ${who}` : ""}
         </h1>
-        <button type="button" className="reveal btn-core mt-10 w-full !py-4" onClick={beginSession}>
+        <button
+          type="button"
+          className="reveal btn-core mt-10 w-full !py-4"
+          onClick={() => {
+            sfx.click();
+            beginSession();
+          }}
+        >
           {connect}
         </button>
-        <button type="button" className="reveal btn-ghost mt-6" onClick={restartIntro}>
+        <button
+          type="button"
+          className="reveal btn-ghost mt-6"
+          onClick={() => {
+            sfx.click();
+            restartIntro();
+          }}
+        >
           {ui.restart[lang]}
         </button>
       </div>
@@ -169,6 +197,9 @@ export function BootOverlay() {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  // Boot always follows a click (Continue, Skip or Connect), so audio is allowed here.
+  useEffect(() => sfx.boot(), []);
 
   useGSAP(() => gsap.from(root.current, { autoAlpha: 0, duration: 0.6 }), { scope: root });
 

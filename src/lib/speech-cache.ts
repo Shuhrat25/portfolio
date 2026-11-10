@@ -6,12 +6,28 @@ import { get, put } from "@vercel/blob";
 import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { allow } from "@/lib/rate-limit";
 
 export type CacheKind = "tts" | "chat";
 
 const BLOB = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 const DIR = process.env.YUI_CACHE_DIR || join(/*turbopackIgnore: true*/ process.cwd(), ".cache", "yui");
 const MEMORY_BUDGET = 48 * 1024 * 1024;
+// A slow store must not hold a request: past these limits a read is a miss and a write is dropped.
+const READ_TIMEOUT_MS = 2500;
+const WRITE_TIMEOUT_MS = 5000;
+// Question log writes per instance per day, whatever the visitor's IP.
+const LOG_PER_DAY = 300;
+
+/**
+ * Aborts after `ms`. A plain abort (AbortError) makes @vercel/blob give up at once; the
+ * TimeoutError of AbortSignal.timeout() is retried by put() with backoff for many minutes.
+ */
+function deadline(ms: number): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
 
 const memory = new Map<string, Buffer>();
 let memoryBytes = 0;
@@ -29,6 +45,16 @@ export function normalizeQuestion(text: string): string {
     .replace(/[^\p{L}\p{N}' ]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * Only plain sentences get a shared answer: all that normalizeQuestion drops from them is visible
+ * punctuation and spaces. Invisible or format characters (zero-width, bidi, Unicode tags,
+ * variation selectors), symbols ("C++", "C#") and emoji would vanish from the key while the model
+ * still reads them, so such questions are answered but not cached.
+ */
+export function cacheableQuestion(text: string): boolean {
+  return /^[\p{L}\p{N} .,!?;:'"«»„“”‘’`()…\-–—]+$/u.test(text);
 }
 
 const ext = (kind: CacheKind) => (kind === "tts" ? "wav" : "txt");
@@ -52,7 +78,8 @@ function remember(id: string, data: Buffer) {
 }
 
 async function readBlob(path: string): Promise<Buffer | null> {
-  const found = await get(path, { access: "private" });
+  // The same signal also bounds reading the body.
+  const found = await get(path, { access: "private", abortSignal: deadline(READ_TIMEOUT_MS) });
   if (!found) return null;
   return Buffer.from(await new Response(found.stream).arrayBuffer());
 }
@@ -82,6 +109,7 @@ export async function putCached(kind: CacheKind, key: string, data: Buffer): Pro
         addRandomSuffix: false,
         allowOverwrite: true,
         contentType: kind === "tts" ? "audio/wav" : "text/plain; charset=utf-8",
+        abortSignal: deadline(WRITE_TIMEOUT_MS),
       });
     } else {
       await mkdir(/*turbopackIgnore: true*/ join(DIR, kind), { recursive: true });
@@ -97,6 +125,7 @@ export async function putCached(kind: CacheKind, key: string, data: Buffer): Pro
  * no visitor name. Browse it in Vercel → Storage → yui-memory → questions/.
  */
 export async function logQuestion(lang: string, question: string, cached: boolean): Promise<void> {
+  if (!allow("log:all", LOG_PER_DAY, 24 * 60 * 60_000)) return;
   const at = new Date();
   const entry = JSON.stringify({ at: at.toISOString(), lang, q: question.slice(0, 600), cached });
   try {
@@ -106,6 +135,7 @@ export async function logQuestion(lang: string, question: string, cached: boolea
         access: "private",
         addRandomSuffix: false,
         contentType: "application/json",
+        abortSignal: deadline(WRITE_TIMEOUT_MS),
       });
     } else {
       await mkdir(/*turbopackIgnore: true*/ DIR, { recursive: true });

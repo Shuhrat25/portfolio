@@ -3,6 +3,7 @@
 import { narration, sectionLines } from "@/content/narration";
 import type { Lang, ProjectKind } from "@/content/profile";
 import { greeting, PANELS, ui, type PanelId } from "@/content/ui";
+import { sfx } from "./sfx";
 import { forgetVisitor, saveVisitor, store } from "./store";
 import { voice } from "./voice";
 
@@ -163,10 +164,40 @@ export function cleanForSpeech(text: string) {
     .trim();
 }
 
+/** How long each chat easter egg plays. */
+const EGG_MS = { matrix: 7000, glitch: 1400 } as const;
+const COMMANDS = ["help", "matrix", "glitch"] as const;
+let eggTimer: ReturnType<typeof setTimeout> | undefined;
+let eggEnd = 0;
+
+/** When the current egg switches off (performance.now() time); Eggs.tsx fades out towards it. */
+export const eggEndsAt = () => eggEnd;
+
+/** Starts an egg (or clears the current one); it always switches itself off. */
+function playEgg(egg: keyof typeof EGG_MS | null) {
+  clearTimeout(eggTimer);
+  eggEnd = egg ? performance.now() + EGG_MS[egg] : 0;
+  store.set({ egg });
+  if (egg) eggTimer = setTimeout(() => store.set({ egg: null }), EGG_MS[egg]);
+}
+
+/** Hidden "/" commands, answered locally: no model call and nothing in the chat history. */
+async function command(q: string) {
+  const id = newRun();
+  const lang = store.get().lang;
+  const name = q.slice(1).trim().split(/\s+/)[0].toLowerCase();
+  const known = COMMANDS.find((c) => c === name);
+  playEgg(known === "matrix" || known === "glitch" ? known : null);
+  store.set({ busy: "speaking", question: q });
+  await say(id, ui.commands[known ?? "unknown"][lang], null);
+  if (alive(id)) store.set({ busy: "idle" });
+}
+
 /** Visitor question → streamed Gemini answer, spoken sentence by sentence. */
 export async function ask(question: string) {
   const q = question.trim().slice(0, 600);
   if (!q) return;
+  if (q.startsWith("/")) return command(q);
   const id = newRun();
   const controller = new AbortController();
   chatAbort = controller;
@@ -228,6 +259,7 @@ export async function ask(question: string) {
       const { done, value } = await reader.read();
       if (done) break;
       if (!alive(id)) return;
+      if (!raw) sfx.message();
       raw += value;
       voice.pulse(400);
       const match = ACTION.exec(raw);

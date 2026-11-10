@@ -153,6 +153,10 @@ export const experience: Experience[] = [
 
 export type ProjectKind = "3d" | "fullstack" | "mobile" | "contribution";
 
+// Captured from the live demo by scripts/capture-previews.mjs into public/projects/:
+// a 960×600 poster and, for the 3D projects, a muted 4-second loop.
+export type ProjectPreview = { image: string; video?: string };
+
 export type Project = {
   id: string;
   title: string;
@@ -162,9 +166,14 @@ export type Project = {
   demo?: string;
   code?: string;
   badge?: L;
+  preview?: ProjectPreview;
 };
 
 const prototype: L = { en: "prototype", ru: "прототип", uz: "prototip" };
+const shot = (id: string, video = false): ProjectPreview => ({
+  image: `/projects/${id}.webp`,
+  ...(video ? { video: `/projects/${id}.mp4` } : {}),
+});
 
 export const projects: Project[] = [
   {
@@ -179,6 +188,7 @@ export const projects: Project[] = [
     stack: ["Next.js", "TypeScript", "Three.js", "R3F", "GSAP"],
     demo: "https://neovex-one-core-concept.vercel.app/",
     code: "https://github.com/Shuhrat25/neovex-one-core-concept",
+    preview: shot("neovex-one-core", true),
   },
   {
     id: "solar-system",
@@ -192,6 +202,7 @@ export const projects: Project[] = [
     stack: ["React", "Three.js", "R3F", "Postprocessing"],
     demo: "https://solar-system-3-d-gamma.vercel.app/",
     code: "https://github.com/Shuhrat25/Solar-System-3D",
+    preview: shot("solar-system", true),
   },
   {
     id: "restorers-bench",
@@ -205,6 +216,7 @@ export const projects: Project[] = [
     stack: ["React", "TypeScript", "Three.js", "R3F"],
     demo: "https://restorers-bench.vercel.app/",
     code: "https://github.com/Shuhrat25/restorers-bench",
+    preview: shot("restorers-bench", true),
   },
   {
     id: "hologram-house",
@@ -218,6 +230,7 @@ export const projects: Project[] = [
     stack: ["React", "TypeScript", "Three.js", "GLSL"],
     demo: "https://hologram-house.vercel.app/",
     code: "https://github.com/Shuhrat25/hologram-house",
+    preview: shot("hologram-house", true),
   },
   {
     id: "mahoratli-pedagog",
@@ -231,6 +244,7 @@ export const projects: Project[] = [
     stack: ["Next.js", "Express", "Prisma", "PostgreSQL", "WebSocket"],
     demo: "https://mahoratli-pedagog.vercel.app/",
     code: "https://github.com/Shuhrat25/mahoratli_pedagog",
+    preview: shot("mahoratli-pedagog"),
   },
   {
     id: "talentpulse",
@@ -257,6 +271,7 @@ export const projects: Project[] = [
     stack: ["React", "Tailwind", "Node.js", "Socket.IO"],
     demo: "https://battle-ship-jet.vercel.app/",
     code: "https://github.com/Shuhrat25/Battle_ship",
+    preview: shot("battleship"),
   },
   {
     id: "music-store",
@@ -270,6 +285,7 @@ export const projects: Project[] = [
     stack: ["React", "TypeScript", "Express", "Web Audio API"],
     demo: "https://music-store-generator.vercel.app/",
     code: "https://github.com/Shuhrat25/music-store-generator",
+    preview: shot("music-store"),
   },
   {
     id: "video-player",
@@ -297,6 +313,7 @@ export const projects: Project[] = [
     stack: ["React", "Express", "PostgreSQL", "bcrypt"],
     demo: "https://admin-panel-seven-gold.vercel.app/",
     code: "https://github.com/Shuhrat25/Admin_panel",
+    preview: shot("admin-workspace"),
   },
   {
     id: "iccu-kiosk",

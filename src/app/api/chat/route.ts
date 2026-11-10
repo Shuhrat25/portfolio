@@ -1,10 +1,10 @@
 import { LANGS, type Lang } from "@/content/profile";
 import { address, type Honorific } from "@/content/ui";
-import { GeminiError, streamChat, type ChatTurn } from "@/lib/gemini";
+import { GeminiError, streamChat, type ChatStream, type ChatTurn } from "@/lib/gemini";
 import { systemPrompt } from "@/lib/knowledge";
 import { allow, clientKey } from "@/lib/rate-limit";
 import { after } from "next/server";
-import { cacheKey, getCached, logQuestion, normalizeQuestion, putCached } from "@/lib/speech-cache";
+import { cacheableQuestion, cacheKey, getCached, logQuestion, normalizeQuestion, putCached } from "@/lib/speech-cache";
 
 const MAX_TURNS = 12;
 const MAX_CHARS = 600;
@@ -18,6 +18,11 @@ type Body = {
 };
 
 export async function POST(request: Request) {
+  // Every request, cached or not, costs a store operation (a cache read or a log write).
+  if (!allow(clientKey(request, "chat-any"), 60, 10 * 60_000)) {
+    return Response.json({ error: "rate_limited" }, { status: 429 });
+  }
+
   let body: Body;
   try {
     body = await request.json();
@@ -40,10 +45,11 @@ export async function POST(request: Request) {
 
   // A first question does not depend on earlier turns, so its answer is generic (no visitor
   // name) and can be reused for everyone who asks the same thing. The prompt is part of the key,
-  // so editing profile.ts invalidates old answers.
+  // so editing profile.ts invalidates old answers. Only plain text is shared, so the key covers
+  // everything the model reads.
   const firstQuestion = turns.length === 1;
   const system = systemPrompt(lang, firstQuestion ? "" : address(lang, name, honorific));
-  const key = firstQuestion ? cacheKey(system, lang, normalizeQuestion(turns[0].text)) : null;
+  const key = firstQuestion && cacheableQuestion(turns[0].text) ? cacheKey(system, lang, normalizeQuestion(turns[0].text)) : null;
   const question = turns.at(-1)!.text;
   if (key) {
     const cached = await getCached("chat", key);
@@ -59,26 +65,33 @@ export async function POST(request: Request) {
   after(() => logQuestion(lang, question, false));
 
   try {
-    const stream = await streamChat(system, turns, request.signal);
-    return text(key ? remember(stream, key) : stream, "miss");
+    const answer = await streamChat(system, turns, request.signal);
+    return text(key ? remember(answer, key) : answer.stream, "miss");
   } catch (error) {
     const status = error instanceof GeminiError && error.status === 429 ? 429 : 502;
     return Response.json({ error: status === 429 ? "rate_limited" : "upstream" }, { status });
   }
 }
 
-/** Passes the stream through and stores the full answer once it completed normally. */
-function remember(stream: ReadableStream<Uint8Array>, key: string) {
+/**
+ * Passes the stream through and, after the response has been sent, stores the answer if it was
+ * read to the end and the model finished it (not cut off by the token limit or a block). An
+ * aborted stream never reaches flush(), so nothing is stored. The response does not wait for
+ * the upload: after() must be registered here, inside the request.
+ */
+function remember({ stream, complete }: ChatStream, key: string) {
   const chunks: Uint8Array[] = [];
+  let answer: Buffer | null = null;
+  after(() => (answer && complete() ? putCached("chat", key, answer) : undefined));
   return stream.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
         chunks.push(chunk);
         controller.enqueue(chunk);
       },
-      async flush() {
-        const answer = Buffer.concat(chunks);
-        if (answer.length > 0) await putCached("chat", key, answer);
+      flush() {
+        const full = Buffer.concat(chunks);
+        if (full.length > 0) answer = full;
       },
     }),
   );

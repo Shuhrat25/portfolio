@@ -5,6 +5,7 @@ import gsap from "gsap";
 import { useEffect, useRef, useState } from "react";
 import { PANELS, ui, type PanelId } from "@/content/ui";
 import { MOBILE, stageInsets } from "@/lib/layout";
+import { cancelListening, startListening, stopListening, useCanListen } from "@/lib/listen";
 import { MENU_ANGLES } from "@/lib/menu-layout";
 import { useStore } from "@/lib/store";
 import { useViewport } from "@/lib/use-viewport";
@@ -169,16 +170,47 @@ export function Dock() {
   const menuVisible = useStore((s) => s.menuVisible);
   const busy = useStore((s) => s.busy);
   const panel = useStore((s) => s.panel);
+  const listening = useStore((s) => s.listening);
+  const micAvailable = useCanListen();
   const [value, setValue] = useState("");
   const root = useRef<HTMLDivElement>(null);
   useGSAP(() => gsap.from(root.current, { autoAlpha: 0, y: 24, duration: 0.9, delay: 0.6, ease: "expo.out" }), { scope: root });
+  // A voice session never outlives the Dock (restart) or carries on under a section and its line.
+  useEffect(() => cancelListening, []);
+  useEffect(() => {
+    if (panel) cancelListening();
+  }, [panel]);
+  // Narration can start without a panel change (its first section already open), and the mic
+  // must not hear Yui's own voice as a question.
+  useEffect(() => {
+    if (busy === "narrating") cancelListening();
+  }, [busy]);
 
   if (sheet) return null;
   const send = () => {
+    // Enter while listening ends the recording; what was heard is sent from there.
+    if (listening) return stopListening();
     const q = value.trim();
     if (!q) return;
     setValue("");
+    // A recorded question may still be transcribing; the typed one wins, or its transcript would
+    // arrive later and replace this answer.
+    cancelListening();
     void ask(q);
+  };
+  // Interim words replace the input; if nothing is sent, what was typed before comes back.
+  // Text typed while a recording is being transcribed is the visitor's and is left alone.
+  const toggleMic = () => {
+    if (listening) return stopListening();
+    const typed = value;
+    let heard = typed;
+    startListening(lang, {
+      onInterim: (text) => {
+        heard = text;
+        setValue(text);
+      },
+      onEnd: (sent) => setValue((v) => (v === heard || v === typed ? (sent ? "" : typed) : v)),
+    });
   };
   return (
     <div ref={root} className="fixed bottom-0 left-0 z-30 flex flex-col justify-end gap-2 px-3 pb-3 sm:px-6 sm:pb-4" style={{ right, height: bottom }}>
@@ -209,7 +241,8 @@ export function Dock() {
           className="min-w-0 flex-1 bg-transparent py-2 text-[0.95rem] text-frost placeholder:text-dim/80 focus:outline-none"
           value={value}
           maxLength={600}
-          placeholder={ui.chatPlaceholder[lang]}
+          readOnly={listening}
+          placeholder={listening ? ui.mic.listening[lang] : ui.chatPlaceholder[lang]}
           aria-label={ui.chatPlaceholder[lang]}
           onChange={(e) => setValue(e.target.value)}
         />
@@ -218,7 +251,34 @@ export function Dock() {
             {ui.stop[lang]}
           </button>
         )}
-        <button type="submit" className="btn-core !px-4 !py-2" disabled={!value.trim()}>
+        {micAvailable && (
+          <button
+            type="button"
+            className={`relative grid size-9 shrink-0 place-items-center rounded-full border transition-[color,background-color,border-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon/60 ${
+              listening
+                ? "border-pink bg-pink/15 text-pink shadow-[0_0_14px_rgba(255,46,136,0.45)]"
+                : "border-neon/40 bg-neon/5 text-neon hover:border-neon hover:bg-neon/15 hover:shadow-[0_0_16px_rgba(62,224,255,0.45)] focus-visible:border-neon"
+            }`}
+            aria-label={listening ? ui.mic.stop[lang] : ui.mic.start[lang]}
+            aria-pressed={listening}
+            title={listening ? ui.mic.stop[lang] : ui.mic.start[lang]}
+            onClick={toggleMic}
+          >
+            {/* Slow breathing halo while recording (2 s opacity swell); still with reduced motion. */}
+            {listening && (
+              <span
+                className="pointer-events-none absolute -inset-1 animate-pulse rounded-full shadow-[0_0_18px_3px_rgba(255,46,136,0.45)] motion-reduce:animate-none"
+                aria-hidden
+              />
+            )}
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <rect x="9" y="3" width="6" height="11" rx="3" />
+              <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9 21h6" />
+            </svg>
+          </button>
+        )}
+        {/* Enabled while listening even with an empty input, so Enter and Send end the recording. */}
+        <button type="submit" className="btn-core !px-4 !py-2" disabled={!listening && !value.trim()}>
           {ui.send[lang]}
         </button>
       </form>

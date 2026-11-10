@@ -123,8 +123,9 @@ void main() {
   vec3 from = vec3(aScatter.x * c - aScatter.z * s, aScatter.y, aScatter.x * s + aScatter.z * c);
   vec3 p = mix(from, target, t * t * (3.0 - 2.0 * t));
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
-  // At least ~1.5 px: sub-pixel points twinkle as they move.
-  gl_PointSize = max(1.5 * uPixelRatio, aSize * uPixelRatio * (1.0 + uEnergy * 0.2) * (4.0 / -mv.z));
+  // At least ~1.5 px: sub-pixel points twinkle as they move. The depth is floored at the near
+  // plane so the size stays finite even for a scattered point level with the camera (it is clipped).
+  gl_PointSize = max(1.5 * uPixelRatio, aSize * uPixelRatio * (1.0 + uEnergy * 0.2) * (4.0 / max(-mv.z, 0.1)));
   vAlpha = mix(0.25, 1.0, t) * (0.35 + 0.65 * aSeed);
   vSeed = aSeed;
   gl_Position = projectionMatrix * mv;
@@ -140,7 +141,8 @@ varying float vSeed;
 
 void main() {
   float d = length(gl_PointCoord - 0.5);
-  float a = smoothstep(0.5, 0.05, d);
+  // Same falloff as smoothstep(0.5, 0.05, d), but with ordered edges: reversed ones are undefined in GLSL.
+  float a = 1.0 - smoothstep(0.05, 0.5, d);
   vec3 col = mix(uColorA, uColorB, step(0.82, vSeed));
   gl_FragColor = vec4(col, a * vAlpha * uOpacity);
 }

@@ -1,0 +1,8 @@
+# Keep LF line endings in the repository regardless of the editor or OS.
+* text=auto eol=lf
+*.mp3 binary
+*.mp4 binary
+*.webp binary
+*.pdf binary
+*.png binary
+*.ico binary
