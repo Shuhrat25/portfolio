@@ -1,6 +1,7 @@
 // Weekly digest of what visitors asked Yui, sent to Shuhrat's Telegram by /api/report.
 // Pure functions only: the route lists the questions and sends the text.
-import { normalizeQuestion, type QuestionEntry } from "@/lib/speech-cache";
+import { faq } from "@/content/faq";
+import { normalizeQuestion, type FaqTap, type QuestionEntry } from "@/lib/speech-cache";
 
 /** Telegram allows 4096 characters; the rest is headroom. Measured in UTF-16 units, which never undercounts. */
 export const REPORT_LIMIT = 3900;
@@ -12,6 +13,8 @@ export type ReportPeriod = { from: number; to: number };
 export type ReportOptions = ReportPeriod & {
   /** How many questions the period holds when `entries` is only the newest part of them. */
   total?: number;
+  /** Taps on the suggested questions under the chat (answered from recordings, not by the chat). */
+  taps?: FaqTap[];
   /** Length budget, REPORT_LIMIT by default. */
   limit?: number;
 };
@@ -84,21 +87,46 @@ export function groupQuestions(entries: QuestionEntry[]): Group[] {
 }
 
 const LABEL_ORDER = [...KNOWN_LANGS.map((code) => code.toUpperCase()), "??"];
-const langs = (group: Group) => LABEL_ORDER.filter((label) => group.langs.has(label)).join("/");
+const langs = (group: { langs: Set<string> }) => LABEL_ORDER.filter((label) => group.langs.has(label)).join("/");
+
+/**
+ * "Нажимали подсказки: N" and one line per suggestion, most tapped first (equal ones in the order
+ * the site shows them). At most ten lines, so it never crowds out the questions below it.
+ */
+export function tapLines(taps: FaqTap[]): string[] {
+  if (taps.length === 0) return [];
+  const order = faq.map((f) => f.id);
+  const byId = new Map<string, { count: number; langs: Set<string> }>();
+  for (const tap of taps) {
+    const row = byId.get(tap.id) ?? { count: 0, langs: new Set<string>() };
+    row.count++;
+    row.langs.add(langLabel(tap.lang));
+    byId.set(tap.id, row);
+  }
+  const rank = (id: string) => (order.includes(id) ? order.indexOf(id) : order.length);
+  const rows = [...byId].sort(([a, x], [b, y]) => y.count - x.count || rank(a) - rank(b));
+  return [
+    "",
+    `Нажимали подсказки: ${taps.length}`,
+    // A suggestion renamed or removed since is still counted, under its id.
+    ...rows.map(([id, row]) => `• ${faq.find((f) => f.id === id)?.q.ru ?? id} — ${row.count}× (${langs(row)})`),
+  ];
+}
 
 /** Plain text (no parse_mode) under `limit` characters. */
 export function buildReport(entries: QuestionEntry[], options: ReportOptions): string {
   const limit = options.limit ?? REPORT_LIMIT;
   const total = Math.max(options.total ?? entries.length, entries.length);
+  const taps = tapLines(options.taps ?? []);
   const lines = heading(options);
   lines.push("");
 
   if (total === 0) {
-    lines.push("За неделю вопросов не было.");
+    lines.push("За неделю вопросов не было.", ...taps);
     return fit(lines.join("\n"), limit);
   }
   if (entries.length === 0) {
-    lines.push(`Вопросов за неделю: ${total}, но прочитать их не удалось.`);
+    lines.push(`Вопросов за неделю: ${total}, но прочитать их не удалось.`, ...taps);
     return fit(lines.join("\n"), limit);
   }
 
@@ -114,6 +142,7 @@ export function buildReport(entries: QuestionEntry[], options: ReportOptions): s
     total > entries.length ? `Всего вопросов: ${total} (ниже — последние ${entries.length})` : `Всего вопросов: ${total}`,
     `Ответы из общего кэша: ${entries.filter((e) => e.cached).length}`,
     `По языкам: ${byLang.join(" · ")}`,
+    ...taps,
   );
 
   // Asked more than once, most asked first (among equals, the most recent); then the rest, newest first.

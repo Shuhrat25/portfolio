@@ -146,8 +146,41 @@ export async function logQuestion(lang: string, question: string, cached: boolea
   }
 }
 
+/**
+ * Anonymous count of a suggested-question tap: which suggestion, in which language, when. The file
+ * name carries all of it (`<ms>-faq.<id>.<lang>-<rand>.json`), so the weekly report counts taps
+ * from the listing alone, without reading them; they sit next to the questions of their day.
+ */
+export async function logFaqTap(id: string, lang: string): Promise<void> {
+  if (!FAQ_ID.test(id) || !/^[a-z]{2}$/.test(lang)) return;
+  if (!allow("log:faq", LOG_PER_DAY, 24 * 60 * 60_000)) return;
+  const at = new Date();
+  const entry = JSON.stringify({ at: at.toISOString(), lang, faq: id });
+  try {
+    if (BLOB) {
+      const day = at.toISOString().slice(0, 10);
+      await put(`questions/${day}/${at.getTime()}-faq.${id}.${lang}-${randomUUID().slice(0, 8)}.json`, entry, {
+        access: "private",
+        addRandomSuffix: false,
+        contentType: "application/json",
+        abortSignal: deadline(WRITE_TIMEOUT_MS),
+      });
+    } else {
+      await mkdir(/*turbopackIgnore: true*/ DIR, { recursive: true });
+      await appendFile(/*turbopackIgnore: true*/ join(DIR, "questions.jsonl"), entry + "\n");
+    }
+  } catch {
+    // counting must never break anything
+  }
+}
+
+const FAQ_ID = /^[a-z0-9-]{1,40}$/;
+const TAP_NAME = /^(\d{10,})-faq\.([a-z0-9-]{1,40})\.([a-z]{2})-/;
+
 /** One logged visitor question, as logQuestion stores it. */
 export type QuestionEntry = { at: string; lang: string; q: string; cached: boolean };
+/** One suggested-question tap, as logFaqTap stores it. */
+export type FaqTap = { at: number; id: string; lang: string };
 
 const DAY_MS = 24 * 60 * 60_000;
 const LIST_TIMEOUT_MS = 10_000;
@@ -181,6 +214,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T) => Prom
 async function listQuestionsBlob(fromMs: number, toMs: number, max: number, until: number) {
   const left = () => until - Date.now();
   const found: { pathname: string; ms: number }[] = [];
+  const taps: FaqTap[] = [];
   // logQuestion files questions by UTC day, so only the folders of the period are listed.
   for (let day = Math.floor(fromMs / DAY_MS) * DAY_MS; day < toMs; day += DAY_MS) {
     const prefix = `questions/${new Date(day).toISOString().slice(0, 10)}/`;
@@ -189,8 +223,16 @@ async function listQuestionsBlob(fromMs: number, toMs: number, max: number, unti
       if (left() <= 0) throw new Error("question listing ran out of time");
       const res = await list({ prefix, cursor, limit: 1000, abortSignal: deadline(Math.min(LIST_TIMEOUT_MS, left())) });
       for (const blob of res.blobs) {
+        const name = blob.pathname.slice(prefix.length);
+        // A suggestion tap is counted from its name alone; it is not a question to read.
+        const tap = TAP_NAME.exec(name);
+        if (tap) {
+          const ms = Number(tap[1]);
+          if (ms >= fromMs && ms < toMs) taps.push({ at: ms, id: tap[2], lang: tap[3] });
+          continue;
+        }
         // Names start with the logging time in ms, so a file is placed without reading it.
-        const stamp = /^(\d{10,})-/.exec(blob.pathname.slice(prefix.length));
+        const stamp = /^(\d{10,})-/.exec(name);
         const ms = stamp ? Number(stamp[1]) : blob.uploadedAt.getTime();
         if (ms >= fromMs && ms < toMs) found.push({ pathname: blob.pathname, ms });
       }
@@ -208,7 +250,7 @@ async function listQuestionsBlob(fromMs: number, toMs: number, max: number, unti
       return null; // one unreadable file must not sink the whole listing
     }
   });
-  return { entries: read.filter((e): e is QuestionEntry => e !== null).sort(byTime), total: found.length };
+  return { entries: read.filter((e): e is QuestionEntry => e !== null).sort(byTime), total: found.length, taps };
 }
 
 async function listQuestionsLocal(fromMs: number, toMs: number, max: number) {
@@ -216,14 +258,21 @@ async function listQuestionsLocal(fromMs: number, toMs: number, max: number) {
     if (error.code === "ENOENT") return null;
     throw error;
   });
-  if (!handle) return { entries: [], total: 0 };
+  if (!handle) return { entries: [], total: 0, taps: [] };
   const kept: QuestionEntry[] = [];
+  const taps: FaqTap[] = [];
   let total = 0;
   try {
     for await (const line of handle.readLines()) {
       let entry: QuestionEntry | null = null;
       try {
-        entry = toEntry(JSON.parse(line));
+        const raw = JSON.parse(line);
+        const tap = toTap(raw);
+        if (tap) {
+          if (tap.at >= fromMs && tap.at < toMs) taps.push(tap);
+          continue;
+        }
+        entry = toEntry(raw);
       } catch {
         // a torn or foreign line is skipped
       }
@@ -238,12 +287,22 @@ async function listQuestionsLocal(fromMs: number, toMs: number, max: number) {
   } finally {
     await handle.close().catch(() => {});
   }
-  return { entries: kept.slice(Math.max(0, kept.length - max)).sort(byTime), total };
+  return { entries: kept.slice(Math.max(0, kept.length - max)).sort(byTime), total, taps };
+}
+
+function toTap(raw: unknown): FaqTap | null {
+  if (!raw || typeof raw !== "object") return null;
+  const { at, lang, faq } = raw as Record<string, unknown>;
+  const ms = typeof at === "string" ? Date.parse(at) : NaN;
+  if (typeof faq !== "string" || !FAQ_ID.test(faq) || Number.isNaN(ms)) return null;
+  return { at: ms, id: faq, lang: typeof lang === "string" ? lang : "" };
 }
 
 /**
  * Questions logged in [fromMs, toMs): the newest `max` of them, oldest first, and how many the
- * period holds in all. Bounded work: one listing per day of the period and at most `max` reads.
+ * period holds in all; plus every suggested-question tap of the period (counted from the listing,
+ * never read, never part of `total`). Bounded work: one listing per day of the period and at most
+ * `max` reads.
  * With `until` (a time in ms) the Blob store is read no later than that: a listing it cannot finish
  * throws, and reads not started by then are left out (`total` still counts them).
  * Throws when the store cannot be listed.
@@ -252,7 +311,7 @@ export async function listQuestions(
   fromMs: number,
   toMs: number,
   { max = 300, until = Infinity }: { max?: number; until?: number } = {},
-): Promise<{ entries: QuestionEntry[]; total: number }> {
+): Promise<{ entries: QuestionEntry[]; total: number; taps: FaqTap[] }> {
   const cap = Math.max(0, Math.floor(max));
   return BLOB ? listQuestionsBlob(fromMs, toMs, cap, until) : listQuestionsLocal(fromMs, toMs, cap);
 }

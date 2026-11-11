@@ -57,8 +57,8 @@ export async function GET(request: Request) {
 
   let text: string;
   try {
-    const { entries, total } = await listQuestions(period.from, period.to, { until: started + STORE_BUDGET_MS });
-    text = buildReport(entries, { ...period, total });
+    const { entries, total, taps } = await listQuestions(period.from, period.to, { until: started + STORE_BUDGET_MS });
+    text = buildReport(entries, { ...period, total, taps });
   } catch {
     if (dry) return Response.json({ error: "storage" }, { status: 502, headers: NO_STORE });
     text = buildStorageErrorReport(period);

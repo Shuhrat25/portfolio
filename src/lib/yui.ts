@@ -354,9 +354,21 @@ export function tellCardinal() {
   );
 }
 
+/** Counts the tap for the weekly report: which suggestion and in which language, nothing more. */
+function countTap(id: string, lang: Lang) {
+  try {
+    const body = JSON.stringify({ id, lang });
+    if (navigator.sendBeacon?.("/api/faq", new Blob([body], { type: "application/json" }))) return;
+    void fetch("/api/faq", { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+  } catch {
+    // counting must never get in the way of the answer
+  }
+}
+
 /** A suggested question: its checked answer, with the section it is about opened alongside. */
 export function askFaq(item: Faq) {
   const lang = store.get().lang;
+  countTap(item.id, lang);
   store.set((s) => ({ faqAsked: s.faqAsked.includes(item.id) ? s.faqAsked : [...s.faqAsked, item.id] }));
   if (item.panel) openPanel(item.panel, item.kind ?? "all");
   void tell(`faq:${item.id}`, item.q[lang], [{ file: `faq-${item.id}`, text: item.a[lang] }]);
