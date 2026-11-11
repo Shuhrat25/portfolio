@@ -50,6 +50,22 @@ async function scripted(name: string, text: string, signal?: AbortSignal) {
   return (await voice.file(voiceFile(name), signal)) ?? (await voice.tts(text, store.get().lang, signal));
 }
 
+/**
+ * A line that names the visitor can only be synthesised live. When Gemini is out of quota, fails
+ * or takes longer than `ms`, Yui says the same line without the name from the pre-recorded clip
+ * `plain` instead of going silent (the subtitle still shows the name). The browser still keeps a
+ * late live answer, so a returning visitor's next "Welcome back, <name>" says the name at once.
+ */
+async function personal(text: string, plain: string, ms: number): Promise<AudioBuffer | null> {
+  const lang = store.get().lang;
+  const late = new Promise<null>((resolve) => setTimeout(() => resolve(null), ms));
+  return (await Promise.race([voice.tts(text, lang), late])) ?? (await voice.file(voiceFile(plain)));
+}
+
+/** How long a line with the visitor's name may wait for live TTS before the plain clip is used. */
+const GREETING_LIVE_MS = 8000;
+const REPLY_LIVE_MS = 6000;
+
 const BOOT_MIN_MS = 3400;
 const BOOT_MAX_MS = 11000;
 
@@ -217,7 +233,7 @@ export function giveName(raw: string) {
   const lang = store.get().lang;
   const text = niceToMeet(lang, name);
   // It contains their name, so it is synthesised live and never shared through the server cache.
-  replyToCard(text, () => voice.tts(text, lang));
+  replyToCard(text, () => personal(text, "nice-to-meet", REPLY_LIVE_MS));
 }
 
 /** The visitor closed the card: "guest" for the rest of this visit, nothing saved. */
@@ -260,8 +276,9 @@ export function switchLanguage(lang: Lang) {
 function prepareGreeting(): Promise<AudioBuffer | null> {
   const { lang, name, honorific, returning } = store.get();
   const text = greeting(lang, name, honorific, returning);
-  if (!name.trim() && !returning) return scripted("greeting", text);
-  return voice.tts(text, lang);
+  const plain = returning ? "greeting-back" : "greeting";
+  if (!name.trim()) return scripted(plain, text);
+  return personal(text, plain, GREETING_LIVE_MS);
 }
 
 export async function deliverGreeting(audio: Promise<AudioBuffer | null>) {

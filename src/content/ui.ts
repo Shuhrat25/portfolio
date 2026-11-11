@@ -170,9 +170,14 @@ export function address(lang: Lang, name: string, honorific: Honorific): string 
   return `${n} ${honorific === "male" ? "janob" : "xonim"}`;
 }
 
-/** Yui's reply when a visitor from a shared link gives a name on the card (live TTS, it names them). */
+/**
+ * Yui's reply when a visitor from a shared link gives a name on the card. With the name it is
+ * synthesised live; without one it is the pre-recorded clip "nice-to-meet", said when live TTS fails.
+ */
 export function niceToMeet(lang: Lang, name: string): string {
-  return { en: `Nice to meet you, ${name}.`, ru: `Приятно познакомиться, ${name}.`, uz: `Tanishganimdan xursandman, ${name}.` }[lang];
+  const n = name.trim();
+  const to = n ? `, ${n}` : "";
+  return { en: `Nice to meet you${to}.`, ru: `Приятно познакомиться${to}.`, uz: `Tanishganimdan xursandman${to}.` }[lang];
 }
 
 export function greeting(lang: Lang, name: string, honorific: Honorific, returning: boolean): string {
