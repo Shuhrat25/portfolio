@@ -13,9 +13,9 @@ export const sectionLines: Record<PanelId, L> = {
     uz: "Bu Shuhrat: O‘zbekistonlik full-stack dasturchi, hozir Toshkentda. Bu yerda uning profili, ta’limi va tillari.",
   },
   experience: {
-    en: "His path: freelancing since 2024, an internship at Itransition Group, and now frontend work at Neovex plus his own startup, CARDINAL.",
-    ru: "Его путь: фриланс с 2024 года, стажировка в Itransition Group, а сейчас frontend в Neovex и собственный стартап CARDINAL.",
-    uz: "Uning yo‘li: 2024-yildan frilans, Itransition Group’da amaliyot, hozir esa Neovex’da frontend va o‘zining CARDINAL startapi.",
+    en: "His path: freelancing since 2024, internships at Itransition Group and Neovex, and now his own startup, CARDINAL.",
+    ru: "Его путь: фриланс с 2024 года, стажировки в Itransition Group и Neovex, а сейчас собственный стартап CARDINAL.",
+    uz: "Uning yo‘li: 2024-yildan frilans, Itransition Group va Neovex’da amaliyot, hozir esa o‘zining CARDINAL startapi.",
   },
   projects: {
     en: "Here are his projects: 3D in the browser, full-stack applications and Android apps. Most of them have a live demo you can open right away.",
@@ -66,9 +66,9 @@ export const narration: NarrationStep[] = [
   },
   {
     text: {
-      en: "Right now he is a frontend intern at Neovex in Tashkent, where he built One Core, a site whose 3D scene transforms as you scroll. Before that he interned at Itransition Group, and he has been freelancing since 2024.",
-      ru: "Сейчас он frontend-стажёр в ташкентской компании Neovex, где сделал сайт One Core с 3D-сценой, которая меняется при прокрутке. До этого прошёл стажировку в Itransition Group, а фрилансом занимается с 2024 года.",
-      uz: "Hozir u Toshkentdagi Neovex kompaniyasida frontend stajyor. U yerda aylantirganda o‘zgaradigan 3D sahnali One Core saytini yaratdi. Undan oldin Itransition Group’da amaliyot o‘tagan, 2024-yildan beri frilanser.",
+      en: "He has been freelancing since 2024. In the summer of 2026 he interned at Itransition Group, and from September to November he was a frontend intern at Neovex in Tashkent, where he built One Core, a site whose 3D scene transforms as you scroll.",
+      ru: "Фрилансом он занимается с 2024 года. Летом 2026 года прошёл стажировку в Itransition Group, а с сентября по ноябрь был frontend-стажёром в ташкентской компании Neovex, где сделал сайт One Core с 3D-сценой, которая меняется при прокрутке.",
+      uz: "U 2024-yildan beri frilanser. 2026-yil yozida Itransition Group’da amaliyotdan o‘tdi, sentyabrdan noyabrgacha esa Toshkentdagi Neovex kompaniyasida frontend stajyor bo‘ldi. U yerda aylantirganda o‘zgaradigan 3D sahnali One Core saytini yaratdi.",
     },
     panel: "experience",
   },

@@ -20,7 +20,8 @@ const CV = [
 
 // Profiles that are his own accounts: sameAs in JSON-LD, rel="me" on the links.
 const PROFILES = ["github", "linkedin", "telegram"];
-const employer = experience.find((e) => e.id === "neovex");
+// A company he works at now ("— now" with a site); his own CARDINAL and freelancing are not employers.
+const employer = experience.find((e) => e.link && /now/.test(e.period.en));
 
 // schema.org Person for search engines. Only facts from profile.ts; he is still studying, hence affiliation, not alumniOf.
 const personLd = {

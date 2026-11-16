@@ -26,9 +26,9 @@ export const person = {
     uz: "Ish takliflariga ochiq · ofis, gibrid yoki masofaviy",
   } as L,
   summary: {
-    en: "Full-stack engineer building web applications since September 2024: interfaces in React and Next.js, REST APIs on Node.js and Express, PostgreSQL, role-based workspaces, admin dashboards, real-time features and integrations. Frontend intern at Neovex, founder of CARDINAL, and the author of several interactive 3D web projects.",
-    ru: "Full-stack разработчик, с сентября 2024 года создаю веб-приложения: интерфейсы на React и Next.js, REST API на Node.js и Express, PostgreSQL, ролевые кабинеты, админ-панели, real-time и интеграции. Frontend-стажёр в Neovex, основатель CARDINAL и автор интерактивных 3D-проектов для браузера.",
-    uz: "2024-yil sentyabridan beri veb-ilovalar yarataman: React va Next.js’da interfeyslar, Node.js va Express’da REST API, PostgreSQL, rollarga asoslangan kabinetlar, admin panellar, real-time funksiyalar va integratsiyalar. Neovex’da Frontend stajyor, CARDINAL asoschisi va brauzer uchun interaktiv 3D loyihalar muallifi.",
+    en: "Full-stack engineer building web applications since September 2024: interfaces in React and Next.js, REST APIs on Node.js and Express, PostgreSQL, role-based workspaces, admin dashboards, real-time features and integrations. Founder of CARDINAL and the author of several interactive 3D web projects; completed a frontend internship at Neovex (September–November 2026).",
+    ru: "Full-stack разработчик, с сентября 2024 года создаю веб-приложения: интерфейсы на React и Next.js, REST API на Node.js и Express, PostgreSQL, ролевые кабинеты, админ-панели, real-time и интеграции. Основатель CARDINAL и автор интерактивных 3D-проектов для браузера; в сентябре–ноябре 2026 года прошёл frontend-стажировку в Neovex.",
+    uz: "2024-yil sentyabridan beri veb-ilovalar yarataman: React va Next.js’da interfeyslar, Node.js va Express’da REST API, PostgreSQL, rollarga asoslangan kabinetlar, admin panellar, real-time funksiyalar va integratsiyalar. CARDINAL asoschisi va brauzer uchun interaktiv 3D loyihalar muallifi; 2026-yil sentyabr–noyabr oylarida Neovex’da frontend amaliyotini o‘tadim.",
   } as L,
 };
 
@@ -71,27 +71,8 @@ export type Experience = {
   points: L[];
 };
 
+// Current work first ("— now"), then past roles from the most recent, as in his CV.
 export const experience: Experience[] = [
-  {
-    id: "neovex",
-    company: "Neovex",
-    link: "https://neovex.uz/ru",
-    role: { en: "Frontend Developer Intern", ru: "Frontend-разработчик (стажёр)", uz: "Frontend dasturchi (stajyor)" },
-    period: { en: "Sep 2026 — now", ru: "сент. 2026 — сейчас", uz: "2026-yil sent. — hozir" },
-    place: { en: "Tashkent", ru: "Ташкент", uz: "Toshkent" },
-    points: [
-      {
-        en: "Built Neovex One Core: a scroll-driven site where one Three.js scene morphs through AI, 3D, AR, VR, Software and Robotics.",
-        ru: "Сделал Neovex One Core: сайт, где одна Three.js-сцена меняет форму при прокрутке — AI, 3D, AR, VR, Software и Robotics.",
-        uz: "Neovex One Core’ni yaratdim: aylantirilganda bitta Three.js sahnasi AI, 3D, AR, VR, Software va Robotics shakllariga o‘tadigan sayt.",
-      },
-      {
-        en: "Stack: Next.js, React, TypeScript, React Three Fiber, GSAP ScrollTrigger, GLSL.",
-        ru: "Стек: Next.js, React, TypeScript, React Three Fiber, GSAP ScrollTrigger, GLSL.",
-        uz: "Stek: Next.js, React, TypeScript, React Three Fiber, GSAP ScrollTrigger, GLSL.",
-      },
-    ],
-  },
   {
     id: "cardinal",
     company: "CARDINAL",
@@ -127,6 +108,26 @@ export const experience: Experience[] = [
         en: "REST APIs, authentication, role-based workspaces, admin dashboards and real-time features.",
         ru: "REST API, авторизация, ролевые кабинеты, админ-панели и обмен данными в реальном времени.",
         uz: "REST API, avtorizatsiya, rollarga asoslangan kabinetlar, admin panellar va real-time funksiyalar.",
+      },
+    ],
+  },
+  {
+    id: "neovex",
+    company: "Neovex",
+    link: "https://neovex.uz/ru",
+    role: { en: "Frontend Developer Intern", ru: "Frontend-разработчик (стажёр)", uz: "Frontend dasturchi (stajyor)" },
+    period: { en: "Sep — Nov 2026", ru: "сент. — нояб. 2026", uz: "2026-yil sent. — noyab." },
+    place: { en: "Tashkent", ru: "Ташкент", uz: "Toshkent" },
+    points: [
+      {
+        en: "Built Neovex One Core: a scroll-driven site where one Three.js scene morphs through AI, 3D, AR, VR, Software and Robotics.",
+        ru: "Сделал Neovex One Core: сайт, где одна Three.js-сцена меняет форму при прокрутке — AI, 3D, AR, VR, Software и Robotics.",
+        uz: "Neovex One Core’ni yaratdim: aylantirilganda bitta Three.js sahnasi AI, 3D, AR, VR, Software va Robotics shakllariga o‘tadigan sayt.",
+      },
+      {
+        en: "Stack: Next.js, React, TypeScript, React Three Fiber, GSAP ScrollTrigger, GLSL.",
+        ru: "Стек: Next.js, React, TypeScript, React Three Fiber, GSAP ScrollTrigger, GLSL.",
+        uz: "Stek: Next.js, React, TypeScript, React Three Fiber, GSAP ScrollTrigger, GLSL.",
       },
     ],
   },
